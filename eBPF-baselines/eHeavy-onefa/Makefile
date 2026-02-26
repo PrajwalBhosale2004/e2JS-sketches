@@ -4,10 +4,10 @@ CC ?= gcc
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
-# Architecture detection
+
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
-# Common flags
+
 CFLAGS := -O2 -g -Wall
 BPF_CFLAGS := -O2 -g -target bpf -I. -D__TARGET_ARCH_$(ARCH)
 LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf 2>/dev/null || echo -I/usr/include)

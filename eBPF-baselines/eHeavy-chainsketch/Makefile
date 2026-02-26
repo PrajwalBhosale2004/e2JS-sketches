@@ -3,24 +3,19 @@ CC ?= gcc
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
-# Architecture detection
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
-# Common flags
 CFLAGS := -O2 -g -Wall
 BPF_CFLAGS := -O2 -g -target bpf -I. -D__TARGET_ARCH_$(ARCH)
 LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf 2>/dev/null || echo -I/usr/include)
 LIBBPF_LDFLAGS := $(shell pkg-config --libs libbpf 2>/dev/null || echo -lbpf -lelf -lz)
 
-# ============================================================================
-# CHAINSKETCH Configuration
-# ============================================================================
+
 CHAIN_BPF_SRC := chainsketch_ebpf.c
 CHAIN_BPF_OBJ := chainsketch_ebpf.o
 CHAIN_USER_SRC := chainsketch_loader.c
 CHAIN_USER_BIN := chainsketch_loader
 
-# ChainSketch runtime parameters (can be overridden)
 CHAIN_IFACE ?= veth-recv
 CHAIN_REPLAY_IFACE ?= veth-send
 CHAIN_PIN_DIR ?= /sys/fs/bpf/chainsketch
@@ -29,9 +24,7 @@ CHAIN_DURATION ?= 5
 CHAIN_TRACE ?= ../dats/10.dat
 CHAIN_PCAP ?= ../pcaps/10.pcap
 
-# ============================================================================
-# Main targets
-# ============================================================================
+
 .PHONY: all help clean
 .PHONY: chainsketch chainsketch-build chainsketch-run chainsketch-setup
 .PHONY: test-chainsketch replay-chainsketch stop-xdp-chainsketch
@@ -72,9 +65,6 @@ help:
 	@echo "  make test-chainsketch IFACE=veth0 CHAIN_DURATION=5"
 	@echo "  make chainsketch-run IFACE=veth0 CHAIN_TOPK=500"
 
-# ============================================================================
-# CHAINSKETCH BUILD
-# ============================================================================
 chainsketch: chainsketch-build chainsketch-setup
 
 chainsketch-build: $(CHAIN_BPF_OBJ) $(CHAIN_USER_BIN)
@@ -94,9 +84,7 @@ chainsketch-setup:
 	@sudo mkdir -p $(CHAIN_PIN_DIR)
 	@sudo rm -f $(CHAIN_PIN_DIR)/* 2>/dev/null || true
 
-# ============================================================================
-# RUN TARGETS
-# ============================================================================
+
 chainsketch-run: chainsketch-build chainsketch-setup
 	@echo "=== Running ChainSketch ==="
 	@echo "Interface: $(CHAIN_IFACE)"
@@ -106,18 +94,14 @@ chainsketch-run: chainsketch-build chainsketch-setup
 	@echo ""
 	sudo ./$(CHAIN_USER_BIN) -i $(CHAIN_IFACE) -o $(CHAIN_PIN_DIR) -k $(CHAIN_TOPK) -D $(CHAIN_DURATION) -t $(CHAIN_TRACE) $(CHAIN_BPF_OBJ)
 
-# ============================================================================
-# REPLAY TARGETS
-# ============================================================================
+
 replay-chainsketch:
 	@echo "=== Replaying packets for ChainSketch ==="
 	@echo "Interface: $(CHAIN_REPLAY_IFACE)"
 	@echo "PCAP: $(CHAIN_PCAP)"
 	sudo tcpreplay --intf1=$(CHAIN_REPLAY_IFACE) --topspeed $(CHAIN_PCAP)
 
-# ============================================================================
-# AUTOMATED TEST TARGETS
-# ============================================================================
+
 test-chainsketch: chainsketch-build chainsketch-setup
 	@test -f $(CHAIN_BPF_OBJ) || (echo "ERROR: $(CHAIN_BPF_OBJ) not found!"; exit 1)
 	@echo "=== Running ChainSketch automated test ==="
@@ -137,16 +121,12 @@ test-chainsketch: chainsketch-build chainsketch-setup
 	@cat chainsketch_test_output.log | tr -d '\r'
 	@rm -f /tmp/chainsketch_loader.pid
 
-# ============================================================================
-# STOP XDP
-# ============================================================================
+
 stop-xdp-chainsketch:
 	@echo "Detaching ChainSketch XDP from $(CHAIN_IFACE)..."
 	@sudo ip link set dev $(CHAIN_IFACE) xdp off 2>/dev/null || true
 
-# ============================================================================
-# CLEANUP
-# ============================================================================
+
 clean:
 	@echo "Cleaning all build artifacts..."
 	rm -f $(CHAIN_BPF_OBJ) $(CHAIN_USER_BIN)

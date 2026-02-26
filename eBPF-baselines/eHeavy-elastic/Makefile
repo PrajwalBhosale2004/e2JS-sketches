@@ -1,57 +1,27 @@
-# Unified Makefile for StableSketch, Jigsaw, 2FASketch, 1FASketch and ElasticSketch eBPF
-# Usage: 
-#   make stable IFACE=veth-recv   - Build and test StableSketch
-#   make jigsaw IFACE=veth0       - Build and test Jigsaw
-#   make twofa IFACE=veth-recv    - Build and test 2FASketch
-#   make onefa IFACE=veth-recv    - Build and test 1FASketch
-#   make elastic IFACE=veth-recv  - Build and test ElasticSketch
-#   make test-stable IFACE=veth-recv - Full automated test for StableSketch
-#   make test-jigsaw IFACE=veth0     - Full automated test for Jigsaw
-#   make test-twofa IFACE=veth-recv  - Full automated test for 2FASketch
-#   make test-onefa IFACE=veth-recv  - Full automated test for 1FASketch
-#   make test-elastic IFACE=veth-recv - Full automated test for ElasticSketch
-
-# Compiler settings
 BPF_CLANG ?= clang
 CC ?= gcc
-# CC ?= $(BPF_CLANG)
+
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
-# Architecture detection
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
-# Unified Makefile for StableSketch, Jigsaw, 2FASketch, 1FASketch and ElasticSketch eBPF
-# Usage: 
-#   make stable IFACE=veth-recv   - Build and test StableSketch
-#   make jigsaw IFACE=veth0       - Build and test Jigsaw
-#   make twofa IFACE=veth-recv    - Build and test 2FASketch
-#   make onefa IFACE=veth-recv    - Build and test 1FASketch
-#   make elastic IFACE=veth-recv  - Build and test ElasticSketch
-#   make test-stable IFACE=veth-recv - Full automated test for StableSketch
-#   make test-jigsaw IFACE=veth0     - Full automated test for Jigsaw
-#   make test-twofa IFACE=veth-recv  - Full automated test for 2FASketch
-#   make test-onefa IFACE=veth-recv  - Full automated test for 1FASketch
-#   make test-elastic IFACE=veth-recv - Full automated test for ElasticSketch
 
-# Compiler settings
 BPF_CLANG ?= clang
 CC ?= gcc
-# CC ?= $(BPF_CLANG)
+
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
-# Architecture detection
+
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
-# Common flags
+
 CFLAGS := -O2 -g -Wall
 BPF_CFLAGS := -O2 -g -target bpf -I. -D__TARGET_ARCH_$(ARCH)
 LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf 2>/dev/null || echo -I/usr/include)
 LIBBPF_LDFLAGS := $(shell pkg-config --libs libbpf 2>/dev/null || echo -lbpf -lelf -lz)
 
-# ============================================================================
-# STABLE SKETCH Configuration
-# ============================================================================
+
 STABLE_BPF_SRC := stable_sketch_ebpf.c
 STABLE_BPF_OBJ := stable_sketch_ebpf.o
 STABLE_SKEL := stable_sketch_ebpf.skel.h
@@ -59,7 +29,7 @@ STABLE_USER_SRC := stable_sketch_user.c
 STABLE_USER_BIN := stable_sketch_user
 STABLE_COMMON := stable_sketch_common.h
 
-# StableSketch runtime parameters (can be overridden)
+
 STABLE_IFACE ?= veth-recv
 STABLE_TOPK ?= 1000
 STABLE_DURATION ?= 10
@@ -67,15 +37,13 @@ STABLE_TRACE ?= ./10.dat
 STABLE_PCAP ?= ./packets_from_dat.pcap
 STABLE_REPLAY_IFACE ?= veth-send
 
-# ============================================================================
-# JIGSAW Configuration
-# ============================================================================
+
 JIGSAW_BPF_SRC := jigsaw_xdp.c
 JIGSAW_BPF_OBJ := jigsaw_xdp.o
 JIGSAW_USER_SRC := jigsaw_loader.c
 JIGSAW_USER_BIN := jigsaw_loader
 
-# Jigsaw runtime parameters (can be overridden)
+
 JIGSAW_IFACE ?= veth0
 JIGSAW_REPLAY_IFACE ?= veth1
 JIGSAW_PIN_DIR ?= /sys/fs/bpf/jigsaw
@@ -84,9 +52,9 @@ JIGSAW_DURATION ?= 10
 JIGSAW_TRACE ?= ./dats/jigsaw_2.dat
 JIGSAW_PCAP ?= ./pcaps/2.pcap
 
-# ============================================================================
-# 2FASKETCH Configuration
-# ============================================================================
+
+
+
 TWOFA_BPF_SRC := twofa_sketch_ebpf.c
 TWOFA_BPF_OBJ := twofa_sketch_ebpf.o
 TWOFA_SKEL := twofa_sketch_ebpf.skel.h
@@ -94,16 +62,14 @@ TWOFA_USER_SRC := twofa_sketch_loader.c
 TWOFA_USER_BIN := twofa_sketch_loader
 TWOFA_COMMON := twofa_sketch_common.h
 
-# 2FASketch runtime parameters (can be overridden)
+
 TWOFA_IFACE ?= veth-recv
 TWOFA_REPLAY_IFACE ?= veth-send
 TWOFA_DURATION ?= 15
 TWOFA_TOPK ?= 100
 TWOFA_PCAP ?= ./packets_from_dat.pcap
 
-# ============================================================================
-# 1FASKETCH Configuration
-# ============================================================================
+
 ONEFA_BPF_SRC := onefa_sketch_ebpf.c
 ONEFA_BPF_OBJ := onefa_sketch_ebpf.o
 ONEFA_SKEL := onefa_sketch_ebpf.skel.h
@@ -111,16 +77,14 @@ ONEFA_USER_SRC := onefa_sketch_loader.c
 ONEFA_USER_BIN := onefa_sketch_loader
 ONEFA_COMMON := onefa_sketch_common.h
 
-# 1FASketch runtime parameters (can be overridden)
+
 ONEFA_IFACE ?= veth-recv
 ONEFA_REPLAY_IFACE ?= veth-send
 ONEFA_DURATION ?= 15
 ONEFA_TOPK ?= 1000
 ONEFA_PCAP ?= ./packets_from_dat.pcap
 
-# ============================================================================
-# ELASTICSKETCH Configuration
-# ============================================================================
+
 ELASTIC_BPF_SRC := elastic_sketch_ebpf.c
 ELASTIC_BPF_OBJ := elastic_sketch_ebpf.o
 ELASTIC_SKEL := elastic_sketch_ebpf.skel.h
@@ -128,21 +92,17 @@ ELASTIC_USER_SRC := elastic_sketch_loader.c
 ELASTIC_USER_BIN := elastic_sketch_loader
 ELASTIC_COMMON := elastic_sketch_common.h
 
-# ElasticSketch runtime parameters (can be overridden)
+
 ELASTIC_IFACE ?= veth-recv
 ELASTIC_REPLAY_IFACE ?= veth-send
 ELASTIC_DURATION ?= 15
 ELASTIC_TOPK ?= 800
 ELASTIC_PCAP ?= ./packets_from_dat.pcap
 
-# ============================================================================
-# Common files
-# ============================================================================
+
 VMLINUX := vmlinux.h
 
-# ============================================================================
-# Main targets
-# ============================================================================
+
 .PHONY: all help clean clean-all vmlinux
 .PHONY: stable jigsaw twofa onefa elastic
 .PHONY: stable-build jigsaw-build twofa-build onefa-build elastic-build
@@ -321,18 +281,12 @@ help:
 	@echo "  make elastic IFACE=veth-recv"
 	@echo "  sudo make test-elastic IFACE=veth-recv ELASTIC_TOPK=500"
 
-# ============================================================================
-# VMLINUX generation
-# ============================================================================
 $(VMLINUX):
 	@echo "Generating vmlinux.h..."
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX)
 
 vmlinux: $(VMLINUX)
 
-# ============================================================================
-# STABLE SKETCH BUILD
-# ============================================================================
 stable: stable-build
 
 stable-build: $(STABLE_USER_BIN)
@@ -351,9 +305,6 @@ $(STABLE_USER_BIN): $(STABLE_USER_SRC) $(STABLE_SKEL) $(STABLE_COMMON)
 	@echo "Compiling StableSketch userspace program..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) $(STABLE_USER_SRC) -o $(STABLE_USER_BIN) $(LIBBPF_LDFLAGS)
 
-# ============================================================================
-# JIGSAW BUILD
-# ============================================================================
 jigsaw: jigsaw-build jigsaw-setup
 
 jigsaw-build: $(JIGSAW_BPF_OBJ) $(JIGSAW_USER_BIN) 
@@ -372,9 +323,9 @@ jigsaw-setup:
 	@sudo mkdir -p $(JIGSAW_PIN_DIR)
 	@sudo rm -f $(JIGSAW_PIN_DIR)/aux_map $(JIGSAW_PIN_DIR)/bucket_map $(JIGSAW_PIN_DIR)/xdp_stats_map 2>/dev/null || true
 
-# ============================================================================
-# 2FASKETCH BUILD 
-# ============================================================================
+
+
+
 twofa: twofa-build
 
 twofa-build: $(TWOFA_USER_BIN)
@@ -392,9 +343,9 @@ $(TWOFA_USER_BIN): $(TWOFA_USER_SRC) $(TWOFA_SKEL) $(TWOFA_COMMON)
 	@echo "Compiling 2FASketch loader..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) -D_BPF_H_ $(TWOFA_USER_SRC) -o $(TWOFA_USER_BIN) $(LIBBPF_LDFLAGS) -lpcap
 
-# ============================================================================
-# 1FASKETCH BUILD 
-# ============================================================================
+
+
+
 onefa: onefa-build
 
 onefa-build: $(ONEFA_USER_BIN)
@@ -412,9 +363,9 @@ $(ONEFA_USER_BIN): $(ONEFA_USER_SRC) $(ONEFA_SKEL) $(ONEFA_COMMON)
 	@echo "Compiling 1FASketch loader..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) -D_BPF_H_ $(ONEFA_USER_SRC) -o $(ONEFA_USER_BIN) $(LIBBPF_LDFLAGS) -lpcap
 
-# ============================================================================
-# ELASTICSKETCH BUILD 
-# ============================================================================
+
+
+
 elastic: elastic-build
 
 elastic-build: $(ELASTIC_USER_BIN)
@@ -433,9 +384,9 @@ $(ELASTIC_USER_BIN): $(ELASTIC_USER_SRC) $(ELASTIC_SKEL) $(ELASTIC_COMMON)
 	@echo "Compiling ElasticSketch loader..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) -D_BPF_H_ $(ELASTIC_USER_SRC) -o $(ELASTIC_USER_BIN) $(LIBBPF_LDFLAGS) -lpcap
 
-# ============================================================================
-# RUN TARGETS
-# ============================================================================
+
+
+
 stable-run: stable-build
 	@echo "=== Running StableSketch ==="
 	@echo "Interface: $(IFACE)"
@@ -483,9 +434,9 @@ elastic-run: elastic-build
 	@echo ""
 	sudo ./$(ELASTIC_USER_BIN) -i $(ELASTIC_IFACE) -k $(ELASTIC_TOPK) -D $(ELASTIC_DURATION) -t $(ELASTIC_PCAP)
 
-# ============================================================================
-# REPLAY TARGETS
-# ============================================================================
+
+
+
 replay-stable:
 	@echo "=== Replaying packets for StableSketch ==="
 	@echo "Interface: $(STABLE_REPLAY_IFACE)"
@@ -516,9 +467,9 @@ replay-elastic:
 	@echo "PCAP: $(ELASTIC_PCAP)"
 	sudo tcpreplay --intf1=$(ELASTIC_REPLAY_IFACE) --topspeed $(ELASTIC_PCAP)
 
-# ============================================================================
-# AUTOMATED TEST TARGETS
-# ============================================================================
+
+
+
 test-stable: stable-build
 	@echo "=== Running StableSketch automated test ==="
 	@echo "Starting StableSketch in background..."
@@ -599,9 +550,9 @@ test-elastic: elastic-build
 	@cat elastic_test_output.log | tr -d '\r'
 	@rm -f /tmp/elastic_loader.pid
 
-# ============================================================================
-# STOP XDP
-# ============================================================================
+
+
+
 stop-xdp-stable:
 	@echo "Detaching StableSketch XDP from $(IFACE)..."
 	@sudo ip link set dev $(IFACE) xdp off 2>/dev/null || true
@@ -622,9 +573,9 @@ stop-xdp-elastic:
 	@echo "Detaching ElasticSketch XDP from $(ELASTIC_IFACE)..."
 	@sudo ip link set dev $(ELASTIC_IFACE) xdp off 2>/dev/null || true
 
-# ============================================================================
-# CLEANUP
-# ============================================================================
+
+
+
 	@echo "  make stable IFACE=veth-recv"
 	@echo "  make test-stable IFACE=veth-recv STABLE_TOPK=500"
 	@echo "  make jigsaw IFACE=veth0"
@@ -636,18 +587,18 @@ stop-xdp-elastic:
 	@echo "  make elastic IFACE=veth-recv"
 	@echo "  sudo make test-elastic IFACE=veth-recv ELASTIC_TOPK=500"
 
-# ============================================================================
-# VMLINUX generation
-# ============================================================================
+
+
+
 $(VMLINUX):
 	@echo "Generating vmlinux.h..."
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX)
 
 vmlinux: $(VMLINUX)
 
-# ============================================================================
-# STABLE SKETCH BUILD
-# ============================================================================
+
+
+
 stable: stable-build
 
 stable-build: $(STABLE_USER_BIN)
@@ -666,9 +617,7 @@ $(STABLE_USER_BIN): $(STABLE_USER_SRC) $(STABLE_SKEL) $(STABLE_COMMON)
 	@echo "Compiling StableSketch userspace program..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) $(STABLE_USER_SRC) -o $(STABLE_USER_BIN) $(LIBBPF_LDFLAGS)
 
-# ============================================================================
-# JIGSAW BUILD
-# ============================================================================
+
 jigsaw: jigsaw-build jigsaw-setup
 
 jigsaw-build: $(JIGSAW_BPF_OBJ) $(JIGSAW_USER_BIN) 
@@ -687,9 +636,9 @@ jigsaw-setup:
 	@sudo mkdir -p $(JIGSAW_PIN_DIR)
 	@sudo rm -f $(JIGSAW_PIN_DIR)/aux_map $(JIGSAW_PIN_DIR)/bucket_map $(JIGSAW_PIN_DIR)/xdp_stats_map 2>/dev/null || true
 
-# ============================================================================
-# 2FASKETCH BUILD 
-# ============================================================================
+
+
+
 twofa: twofa-build
 
 twofa-build: $(TWOFA_USER_BIN)
@@ -707,9 +656,7 @@ $(TWOFA_USER_BIN): $(TWOFA_USER_SRC) $(TWOFA_SKEL) $(TWOFA_COMMON)
 	@echo "Compiling 2FASketch loader..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) -D_BPF_H_ $(TWOFA_USER_SRC) -o $(TWOFA_USER_BIN) $(LIBBPF_LDFLAGS) -lpcap
 
-# ============================================================================
-# 1FASKETCH BUILD 
-# ============================================================================
+
 onefa: onefa-build
 
 onefa-build: $(ONEFA_USER_BIN)
@@ -727,9 +674,9 @@ $(ONEFA_USER_BIN): $(ONEFA_USER_SRC) $(ONEFA_SKEL) $(ONEFA_COMMON)
 	@echo "Compiling 1FASketch loader..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) -D_BPF_H_ $(ONEFA_USER_SRC) -o $(ONEFA_USER_BIN) $(LIBBPF_LDFLAGS) -lpcap
 
-# ============================================================================
-# ELASTICSKETCH BUILD 
-# ============================================================================
+
+
+
 elastic: elastic-build
 
 elastic-build: $(ELASTIC_USER_BIN)
@@ -748,9 +695,7 @@ $(ELASTIC_USER_BIN): $(ELASTIC_USER_SRC) $(ELASTIC_SKEL) $(ELASTIC_COMMON)
 	@echo "Compiling ElasticSketch loader..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) -D_BPF_H_ $(ELASTIC_USER_SRC) -o $(ELASTIC_USER_BIN) $(LIBBPF_LDFLAGS) -lpcap
 
-# ============================================================================
-# RUN TARGETS
-# ============================================================================
+
 stable-run: stable-build
 	@echo "=== Running StableSketch ==="
 	@echo "Interface: $(IFACE)"
@@ -798,9 +743,7 @@ elastic-run: elastic-build
 	@echo ""
 	sudo ./$(ELASTIC_USER_BIN) -i $(ELASTIC_IFACE) -k $(ELASTIC_TOPK) -D $(ELASTIC_DURATION) -t $(ELASTIC_PCAP)
 
-# ============================================================================
-# REPLAY TARGETS
-# ============================================================================
+
 replay-stable:
 	@echo "=== Replaying packets for StableSketch ==="
 	@echo "Interface: $(STABLE_REPLAY_IFACE)"
@@ -831,9 +774,7 @@ replay-elastic:
 	@echo "PCAP: $(ELASTIC_PCAP)"
 	sudo tcpreplay --intf1=$(ELASTIC_REPLAY_IFACE) --topspeed $(ELASTIC_PCAP)
 
-# ============================================================================
-# AUTOMATED TEST TARGETS
-# ============================================================================
+
 test-stable: stable-build
 	@echo "=== Running StableSketch automated test ==="
 	@echo "Starting StableSketch in background..."
@@ -914,9 +855,9 @@ test-elastic: elastic-build
 	@cat elastic_test_output.log | tr -d '\r'
 	@rm -f /tmp/elastic_loader.pid
 
-# ============================================================================
-# STOP XDP
-# ============================================================================
+
+
+
 stop-xdp-stable:
 	@echo "Detaching StableSketch XDP from $(IFACE)..."
 	@sudo ip link set dev $(IFACE) xdp off 2>/dev/null || true
@@ -937,9 +878,9 @@ stop-xdp-elastic:
 	@echo "Detaching ElasticSketch XDP from $(ELASTIC_IFACE)..."
 	@sudo ip link set dev $(ELASTIC_IFACE) xdp off 2>/dev/null || true
 
-# ============================================================================
-# CLEANUP
-# ============================================================================
+
+
+
 clean:
 	@echo "Cleaning all build artifacts..."
 	rm -f $(STABLE_BPF_OBJ) $(STABLE_SKEL) $(STABLE_USER_BIN)

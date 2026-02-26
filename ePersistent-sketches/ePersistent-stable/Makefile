@@ -1,21 +1,15 @@
-# Compiler settings
 BPF_CLANG ?= clang
 CC ?= gcc
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
-# Architecture detection
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
-# Common flags
 CFLAGS := -O2 -g -Wall
 BPF_CFLAGS := -O2 -g -target bpf -I. -D__TARGET_ARCH_$(ARCH)
 LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf 2>/dev/null || echo -I/usr/include)
 LIBBPF_LDFLAGS := $(shell pkg-config --libs libbpf 2>/dev/null || echo -lbpf -lelf -lz)
 
-# ============================================================================
-# PERSISTENT STABLE SKETCH Configuration
-# ============================================================================
 PERSISTENT_BPF_SRC := persistent_stable_sketch_ebpf.c
 PERSISTENT_BPF_OBJ := persistent_stable_sketch_ebpf.o
 PERSISTENT_SKEL := persistent_stable_sketch_ebpf.skel.h
@@ -23,7 +17,7 @@ PERSISTENT_USER_SRC := persistent_stable_sketch_user.c
 PERSISTENT_USER_BIN := persistent_stable_sketch_user
 PERSISTENT_COMMON := persistent_stable_sketch_common.h
 
-# Persistent runtime parameters (can be overridden)
+
 PERSISTENT_IFACE ?= veth-recv
 PERSISTENT_TOPK ?= 50
 PERSISTENT_DURATION ?= 10
@@ -33,9 +27,6 @@ PERSISTENT_REPLAY_IFACE ?= veth-send
 PERSISTENT_WINDOWS ?= 1600
 PERSISTENT_THRESHOLD ?= 0.5
 
-# ============================================================================
-# STABLE SKETCH Configuration
-# ============================================================================
 STABLE_BPF_SRC := stable_sketch_ebpf.c
 STABLE_BPF_OBJ := stable_sketch_ebpf.o
 STABLE_SKEL := stable_sketch_ebpf.skel.h
@@ -43,7 +34,7 @@ STABLE_USER_SRC := stable_sketch_user.c
 STABLE_USER_BIN := stable_sketch_user
 STABLE_COMMON := stable_sketch_common.h
 
-# StableSketch runtime parameters
+
 STABLE_IFACE ?= veth-recv
 STABLE_TOPK ?= 1000
 STABLE_DURATION ?= 10
@@ -51,15 +42,12 @@ STABLE_TRACE ?= ../jigsaw_1.dat
 STABLE_PCAP ?= ../1.pcap
 STABLE_REPLAY_IFACE ?= veth-send
 
-# ============================================================================
-# JIGSAW Configuration
-# ============================================================================
 JIGSAW_BPF_SRC := jigsaw_xdp.c
 JIGSAW_BPF_OBJ := jigsaw_xdp.o
 JIGSAW_USER_SRC := jigsaw_loader.c
 JIGSAW_USER_BIN := jigsaw_loader
 
-# Jigsaw runtime parameters
+
 JIGSAW_IFACE ?= veth0
 JIGSAW_REPLAY_IFACE ?= veth1
 JIGSAW_PIN_DIR ?= /sys/fs/bpf/jigsaw
@@ -68,9 +56,7 @@ JIGSAW_DURATION ?= 10
 JIGSAW_TRACE ?= ./dats/jigsaw_2.dat
 JIGSAW_PCAP ?= ./pcaps/2.pcap
 
-# ============================================================================
-# 2FASKETCH Configuration
-# ============================================================================
+
 TWOFA_BPF_SRC := twofa_sketch_ebpf.c
 TWOFA_BPF_OBJ := twofa_sketch_ebpf.o
 TWOFA_SKEL := twofa_sketch_ebpf.skel.h
@@ -78,21 +64,15 @@ TWOFA_USER_SRC := twofa_sketch_loader.c
 TWOFA_USER_BIN := twofa_sketch_loader
 TWOFA_COMMON := twofa_sketch_common.h
 
-# 2FASketch runtime parameters
+
 TWOFA_IFACE ?= veth-recv
 TWOFA_REPLAY_IFACE ?= veth-send
 TWOFA_DURATION ?= 10
 TWOFA_TOPK ?= 1000
 TWOFA_PCAP ?= ./packets_from_dat.pcap
 
-# ============================================================================
-# Common files
-# ============================================================================
 VMLINUX := vmlinux.h
 
-# ============================================================================
-# Main targets
-# ============================================================================
 .PHONY: all help clean clean-all vmlinux
 .PHONY: stable jigsaw twofa persistent
 .PHONY: stable-build jigsaw-build twofa-build persistent-build
@@ -151,18 +131,18 @@ help:
 	@echo "  make persistent IFACE=veth-recv"
 	@echo "  make test-persistent IFACE=veth-recv PERSISTENT_WINDOWS=800 PERSISTENT_THRESHOLD=0.5"
 
-# ============================================================================
-# VMLINUX generation
-# ============================================================================
+
+
+
 $(VMLINUX):
 	@echo "Generating vmlinux.h..."
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX)
 
 vmlinux: $(VMLINUX)
 
-# ============================================================================
-# PERSISTENT STABLE SKETCH BUILD
-# ============================================================================
+
+
+
 persistent: persistent-build
 
 persistent-build: $(PERSISTENT_USER_BIN)
@@ -181,9 +161,9 @@ $(PERSISTENT_USER_BIN): $(PERSISTENT_USER_SRC) $(PERSISTENT_SKEL) $(PERSISTENT_C
 	@echo "Compiling Persistent-StableSketch userspace program..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) $(PERSISTENT_USER_SRC) -o $(PERSISTENT_USER_BIN) $(LIBBPF_LDFLAGS) -lm
 
-# ============================================================================
-# STABLE SKETCH BUILD
-# ============================================================================
+
+
+
 stable: stable-build
 
 stable-build: $(STABLE_USER_BIN)
@@ -202,9 +182,9 @@ $(STABLE_USER_BIN): $(STABLE_USER_SRC) $(STABLE_SKEL) $(STABLE_COMMON)
 	@echo "Compiling StableSketch userspace program..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) $(STABLE_USER_SRC) -o $(STABLE_USER_BIN) $(LIBBPF_LDFLAGS)
 
-# ============================================================================
-# JIGSAW BUILD
-# ============================================================================
+
+
+
 jigsaw: jigsaw-build jigsaw-setup
 
 jigsaw-build: $(JIGSAW_BPF_OBJ) $(JIGSAW_USER_BIN) 
@@ -223,9 +203,9 @@ jigsaw-setup:
 	@sudo mkdir -p $(JIGSAW_PIN_DIR)
 	@sudo rm -f $(JIGSAW_PIN_DIR)/aux_map $(JIGSAW_PIN_DIR)/bucket_map $(JIGSAW_PIN_DIR)/xdp_stats_map 2>/dev/null || true
 
-# ============================================================================
-# 2FASKETCH BUILD 
-# ============================================================================
+
+
+
 twofa: twofa-build
 
 twofa-build: $(TWOFA_USER_BIN)
@@ -243,9 +223,9 @@ $(TWOFA_USER_BIN): $(TWOFA_USER_SRC) $(TWOFA_SKEL) $(TWOFA_COMMON)
 	@echo "Compiling 2FASketch loader..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) -D_BPF_H_ $(TWOFA_USER_SRC) -o $(TWOFA_USER_BIN) $(LIBBPF_LDFLAGS) -lpcap
 
-# ============================================================================
-# RUN TARGETS
-# ============================================================================
+
+
+
 persistent-run: persistent-build
 	@echo "=== Running Persistent-StableSketch ==="
 	@echo "Interface: $(PERSISTENT_IFACE)"
@@ -284,9 +264,9 @@ twofa-run: twofa-build
 	@echo ""
 	sudo ./$(TWOFA_USER_BIN) -i $(TWOFA_IFACE) -k $(TWOFA_TOPK) -D $(TWOFA_DURATION) -t $(TWOFA_PCAP)
 
-# ============================================================================
-# REPLAY TARGETS
-# ============================================================================
+
+
+
 replay-persistent:
 	@echo "=== Replaying packets for Persistent-StableSketch ==="
 	@echo "Interface: $(PERSISTENT_REPLAY_IFACE)"
@@ -311,9 +291,9 @@ replay-twofa:
 	@echo "PCAP: $(TWOFA_PCAP)"
 	sudo tcpreplay --intf1=$(TWOFA_REPLAY_IFACE) --topspeed $(TWOFA_PCAP)
 
-# ============================================================================
-# AUTOMATED TEST TARGETS
-# ============================================================================
+
+
+
 test-persistent: persistent-build
 	@echo "=== Running Persistent-StableSketch automated test ==="
 	@echo "Starting Persistent-StableSketch in background..."
@@ -383,9 +363,9 @@ test-twofa: twofa-build
 	@cat twofa_test_output.log | tr -d '\r'
 	@rm -f /tmp/twofa_loader.pid
 
-# ============================================================================
-# STOP XDP
-# ============================================================================
+
+
+
 stop-xdp-persistent:
 	@echo "Detaching Persistent-StableSketch XDP from $(PERSISTENT_IFACE)..."
 	@sudo ip link set dev $(PERSISTENT_IFACE) xdp off 2>/dev/null || true
@@ -402,9 +382,9 @@ stop-xdp-twofa:
 	@echo "Detaching 2FASketch XDP from $(TWOFA_IFACE)..."
 	@sudo ip link set dev $(TWOFA_IFACE) xdp off 2>/dev/null || true
 
-# ============================================================================
-# CLEANUP
-# ============================================================================
+
+
+
 clean:
 	@echo "Cleaning all build artifacts..."
 	rm -f $(PERSISTENT_BPF_OBJ) $(PERSISTENT_SKEL) $(PERSISTENT_USER_BIN)

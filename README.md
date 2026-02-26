@@ -16,16 +16,20 @@ Consists of eMultiHeavy-twofa, eMultiHeavy-jigsaw and eMultiHeavy-stable.
 
 ### **4) eRegularized-stable : Enhanced version of eHeavy-stable that deals with the irregularities caused by the probabilistic decay replacement policy of eHeavy-stable.**
 
-### **5) eRecent-twofa : Specialized version of eHeavy-jigsaw which achieves a high reduction in errors under bursty traffic conditions.**
+### **5) eRecent-twofa : Specialized version of eHeavy-twofa which achieves a high reduction in errors under bursty traffic conditions.**
 
 ---
 
 ## **Prerequisites**
 
 Linux kernel with eBPF support
+
 Clang compiler
+
 libbpf development libraries
+
 libpcap (for user-space variant)
+
 tcpreplay (for testing)
 
 ---
@@ -57,12 +61,15 @@ The repository contains the following folders:
 4. eRecent-twofa: Code files for eRecent-twofa.
 5. eRegularized-stable: Code files for eRegularized-stable.
 6. libpcap-sketches: Code files for libpcap-sketches which are user space C versions of Stable-Sketch, 2FA Sketch and Jigsaw-Sketch which read packets through the network interface.
-7. eBPF-baselines : Code files for the eBPF-based versions of baseline algorithms.
+7. eBPF-baselines
 
-Sketch              Baseline algorithms
-eHeavy-twofa        eHeavy-onefa, eHeavy-elastic
-eHeavy-jigsaw       eHeavy-heavyguardian, eHeavy-chainsketch, eHeavy-wavingsketch, eHeavy-uasketch
-eHeavy-stable       eHeavy-mv, eHeavy-elastic
+Code files for the eBPF-based versions of baseline algorithms.
+
+| Sketch           | Baseline Algorithms |
+|------------------|--------------------|
+| eHeavy-twofa     | eHeavy-onefa, eHeavy-elastic |
+| eHeavy-jigsaw    | eHeavy-heavyguardian, eHeavy-chainsketch, eHeavy-wavingsketch, eHeavy-uasketch |
+| eHeavy-stable    | eHeavy-mv, eHeavy-elastic |
 
 8. dats : Folder containing all the .dat files needed for the experimentation.
 

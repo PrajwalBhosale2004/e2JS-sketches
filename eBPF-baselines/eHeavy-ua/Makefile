@@ -3,24 +3,20 @@ CC ?= gcc
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
-# Architecture detection
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
-# Common flags
+
 CFLAGS := -O2 -g -Wall
 BPF_CFLAGS := -O2 -g -target bpf -I. -D__TARGET_ARCH_$(ARCH)
 LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf 2>/dev/null || echo -I/usr/include)
 LIBBPF_LDFLAGS := $(shell pkg-config --libs libbpf 2>/dev/null || echo -lbpf -lelf -lz)
 
-# ============================================================================
-# UA-SKETCH Configuration
-# ============================================================================
 UA_BPF_SRC := uasketch_ebpf.c
 UA_BPF_OBJ := uasketch_ebpf.o
 UA_USER_SRC := uasketch_loader.c
 UA_USER_BIN := uasketch_loader
 
-# UA-Sketch runtime parameters (can be overridden)
+
 UA_IFACE ?= veth-recv
 UA_REPLAY_IFACE ?= veth-send
 UA_PIN_DIR ?= /sys/fs/bpf/uasketch
@@ -29,9 +25,7 @@ UA_DURATION ?= 5
 UA_TRACE ?= ../dats/10.dat
 UA_PCAP ?= ../pcaps/10.pcap
 
-# ============================================================================
-# Main targets
-# ============================================================================
+
 .PHONY: all help clean
 .PHONY: uasketch uasketch-build uasketch-run uasketch-setup
 .PHONY: test-uasketch replay-uasketch stop-xdp-uasketch
@@ -72,9 +66,6 @@ help:
 	@echo "  make test-uasketch IFACE=veth0 UA_DURATION=5"
 	@echo "  make uasketch-run IFACE=veth0 UA_TOPK=500"
 
-# ============================================================================
-# UA-SKETCH BUILD
-# ============================================================================
 uasketch: uasketch-build uasketch-setup
 
 uasketch-build: $(UA_BPF_OBJ) $(UA_USER_BIN)
@@ -94,9 +85,7 @@ uasketch-setup:
 	@sudo mkdir -p $(UA_PIN_DIR)
 	@sudo rm -f $(UA_PIN_DIR)/* 2>/dev/null || true
 
-# ============================================================================
-# RUN TARGETS
-# ============================================================================
+
 uasketch-run: uasketch-build uasketch-setup
 	@echo "=== Running UA-Sketch ==="
 	@echo "Interface: $(UA_IFACE)"
@@ -106,18 +95,13 @@ uasketch-run: uasketch-build uasketch-setup
 	@echo ""
 	sudo ./$(UA_USER_BIN) -i $(UA_IFACE) -o $(UA_PIN_DIR) -k $(UA_TOPK) -D $(UA_DURATION) -t $(UA_TRACE) $(UA_BPF_OBJ)
 
-# ============================================================================
-# REPLAY TARGETS
-# ============================================================================
+
 replay-uasketch:
 	@echo "=== Replaying packets for UA-Sketch ==="
 	@echo "Interface: $(UA_REPLAY_IFACE)"
 	@echo "PCAP: $(UA_PCAP)"
 	sudo tcpreplay --intf1=$(UA_REPLAY_IFACE) --topspeed $(UA_PCAP)
 
-# ============================================================================
-# AUTOMATED TEST TARGETS
-# ============================================================================
 test-uasketch: uasketch-build uasketch-setup
 	@test -f $(UA_BPF_OBJ) || (echo "ERROR: $(UA_BPF_OBJ) not found!"; exit 1)
 	@echo "=== Running UA-Sketch automated test ==="
@@ -137,16 +121,11 @@ test-uasketch: uasketch-build uasketch-setup
 	@cat uasketch_test_output.log | tr -d '\r'
 	@rm -f /tmp/uasketch_loader.pid
 
-# ============================================================================
-# STOP XDP
-# ============================================================================
+
 stop-xdp-uasketch:
 	@echo "Detaching UA-Sketch XDP from $(UA_IFACE)..."
 	@sudo ip link set dev $(UA_IFACE) xdp off 2>/dev/null || true
 
-# ============================================================================
-# CLEANUP
-# ============================================================================
 clean:
 	@echo "Cleaning all build artifacts..."
 	rm -f $(UA_BPF_OBJ) $(UA_USER_BIN)

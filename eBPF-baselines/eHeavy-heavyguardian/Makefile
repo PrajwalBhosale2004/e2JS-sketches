@@ -1,34 +1,21 @@
-# ============================================================================
-# HeavyGuardian eBPF Makefile
-# Usage:
-#   make heavyguardian IFACE=veth0       - Build and test HeavyGuardian
-#   make test-heavyguardian IFACE=veth0  - Full automated test for HeavyGuardian
-# ============================================================================
-
-# Compiler settings
 BPF_CLANG ?= clang
 CC ?= gcc
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
-# Architecture detection
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
-# Common flags
 CFLAGS := -O2 -g -Wall
 BPF_CFLAGS := -O2 -g -target bpf -I. -D__TARGET_ARCH_$(ARCH)
 LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf 2>/dev/null || echo -I/usr/include)
 LIBBPF_LDFLAGS := $(shell pkg-config --libs libbpf 2>/dev/null || echo -lbpf -lelf -lz)
 
-# ============================================================================
-# HEAVYGUARDIAN Configuration
-# ============================================================================
 HG_BPF_SRC := heavyguardian_ebpf.c
 HG_BPF_OBJ := heavyguardian_ebpf.o
 HG_USER_SRC := heavyguardian_loader.c
 HG_USER_BIN := heavyguardian_loader
 
-# HeavyGuardian runtime parameters (can be overridden)
+
 HG_IFACE ?= veth-recv
 HG_REPLAY_IFACE ?= veth-send
 HG_PIN_DIR ?= /sys/fs/bpf/heavyguardian
@@ -37,9 +24,6 @@ HG_DURATION ?= 5
 HG_TRACE ?= ../dats/10.dat
 HG_PCAP ?= ../pcaps/10.pcap
 
-# ============================================================================
-# Main targets
-# ============================================================================
 .PHONY: all help clean
 .PHONY: heavyguardian heavyguardian-build heavyguardian-run heavyguardian-setup
 .PHONY: test-heavyguardian replay-heavyguardian stop-xdp-heavyguardian
@@ -80,9 +64,9 @@ help:
 	@echo "  make test-heavyguardian IFACE=veth0 HG_DURATION=5"
 	@echo "  make heavyguardian-run IFACE=veth0 HG_TOPK=500"
 
-# ============================================================================
-# HEAVYGUARDIAN BUILD
-# ============================================================================
+
+
+
 heavyguardian: heavyguardian-build heavyguardian-setup
 
 heavyguardian-build: $(HG_BPF_OBJ) $(HG_USER_BIN)
@@ -102,9 +86,6 @@ heavyguardian-setup:
 	@sudo mkdir -p $(HG_PIN_DIR)
 	@sudo rm -f $(HG_PIN_DIR)/* 2>/dev/null || true
 
-# ============================================================================
-# RUN TARGETS
-# ============================================================================
 heavyguardian-run: heavyguardian-build heavyguardian-setup
 	@echo "=== Running HeavyGuardian ==="
 	@echo "Interface: $(HG_IFACE)"
@@ -114,18 +95,12 @@ heavyguardian-run: heavyguardian-build heavyguardian-setup
 	@echo ""
 	sudo ./$(HG_USER_BIN) -i $(HG_IFACE) -o $(HG_PIN_DIR) -k $(HG_TOPK) -D $(HG_DURATION) -t $(HG_TRACE) $(HG_BPF_OBJ)
 
-# ============================================================================
-# REPLAY TARGETS
-# ============================================================================
 replay-heavyguardian:
 	@echo "=== Replaying packets for HeavyGuardian ==="
 	@echo "Interface: $(HG_REPLAY_IFACE)"
 	@echo "PCAP: $(HG_PCAP)"
 	sudo tcpreplay --intf1=$(HG_REPLAY_IFACE) --topspeed $(HG_PCAP)
 
-# ============================================================================
-# AUTOMATED TEST TARGETS
-# ============================================================================
 test-heavyguardian: heavyguardian-build heavyguardian-setup
 	@test -f $(HG_BPF_OBJ) || (echo "ERROR: $(HG_BPF_OBJ) not found!"; exit 1)
 	@echo "=== Running HeavyGuardian automated test ==="
@@ -145,16 +120,10 @@ test-heavyguardian: heavyguardian-build heavyguardian-setup
 	@cat heavyguardian_test_output.log | tr -d '\r'
 	@rm -f /tmp/heavyguardian_loader.pid
 
-# ============================================================================
-# STOP XDP
-# ============================================================================
 stop-xdp-heavyguardian:
 	@echo "Detaching HeavyGuardian XDP from $(HG_IFACE)..."
 	@sudo ip link set dev $(HG_IFACE) xdp off 2>/dev/null || true
 
-# ============================================================================
-# CLEANUP
-# ============================================================================
 clean:
 	@echo "Cleaning all build artifacts..."
 	rm -f $(HG_BPF_OBJ) $(HG_USER_BIN)

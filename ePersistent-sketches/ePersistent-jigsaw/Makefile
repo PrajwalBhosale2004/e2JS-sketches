@@ -1,37 +1,31 @@
-# Compiler settings
 BPF_CLANG ?= clang
 CC ?= gcc
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
-# Architecture detection
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
-# Common flags
 CFLAGS := -O2 -g -Wall
 BPF_CFLAGS := -O2 -g -target bpf -I. -D__TARGET_ARCH_$(ARCH)
 LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf 2>/dev/null || echo -I/usr/include)
 LIBBPF_LDFLAGS := $(shell pkg-config --libs libbpf 2>/dev/null || echo -lbpf -lelf -lz)
 
-
-# PERSISTENT Configuration
 PS_BPF_SRC := persistent_ebpf.c
 PS_BPF_OBJ := persistent_ebpf.o
 PS_USER_SRC := persistent_loader.c
 PS_USER_BIN := persistent_loader
 PS_TEST_LOG := persistent_test_output.log
 
-# Persistent runtime parameters (can be overridden)
 PS_IFACE ?= veth-recv
 PS_REPLAY_IFACE ?= veth-send
 PS_PIN_DIR ?= /sys/fs/bpf/persistent
 PS_TOPK ?= 50
 PS_DURATION ?= 5
-# PS_PERSISTENCE_THRESHOLD ?= 7
+
 PS_TRACE ?= ../../dats/2.dat
 PS_PCAP ?= ../../pcaps/2.pcap
 
-# Main targets
+
 .PHONY: all help clean
 .PHONY: persistent persistent-build persistent-run persistent-setup
 .PHONY: test-persistent replay-persistent stop-xdp-persistent
@@ -68,7 +62,7 @@ help:
 	@echo "  make test-persistent IFACE=veth0 PS_DURATION=5 PS_PERSISTENCE_THRESHOLD=4"
 
 
-# PERSISTENT BUILD
+
 persistent: persistent-build persistent-setup
 
 persistent-build: $(PS_BPF_OBJ) $(PS_USER_BIN)
@@ -89,7 +83,7 @@ persistent-setup:
 	@sudo rm -r $(PS_PIN_DIR) 2>/dev/null || true
 	@sudo mkdir -p $(PS_PIN_DIR)
 
-# RUN TARGETS
+
 
 persistent-run: persistent-build persistent-setup
 	@echo "Running Persistent Item Detection\n"
@@ -100,7 +94,7 @@ persistent-run: persistent-build persistent-setup
 	@echo ""
 	sudo ./$(PS_USER_BIN) -i $(PS_IFACE) -o $(PS_PIN_DIR) -k $(PS_TOPK) -D $(PS_DURATION) -t $(PS_TRACE) $(PS_BPF_OBJ)
 
-# REPLAY TARGETS
+
 
 replay-persistent:
 	@echo "\nReplaying packets for Persistent\n"
@@ -108,7 +102,7 @@ replay-persistent:
 	@echo "PCAP: $(PS_PCAP)"
 	sudo tcpreplay --intf1=$(PS_REPLAY_IFACE) --topspeed $(PS_PCAP)
 
-# AUTOMATED TEST TARGETS
+
 
 test-persistent: persistent-build persistent-setup
 	@test -f $(PS_BPF_OBJ) || (echo "ERROR: $(PS_BPF_OBJ) not found!"; exit 1)
@@ -132,14 +126,11 @@ test-persistent: persistent-build persistent-setup
 	@cat persistent_test_output.log
 	@rm -f /tmp/persistent_loader.pid
 
-
-# STOP XDP
-
 stop-xdp-persistent:
 	@echo "Detaching Persistent XDP from $(PS_IFACE)..."
 	@sudo ip link set dev $(PS_IFACE) xdp off 2>/dev/null || true
 
-# CLEANUP
+
 clean:
 	@echo "Cleaning all build artifacts..."
 	rm -f $(PS_BPF_OBJ) $(PS_USER_BIN)

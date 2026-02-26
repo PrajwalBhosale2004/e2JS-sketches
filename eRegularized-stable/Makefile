@@ -1,31 +1,17 @@
-# Unified Makefile for StableSketch, Jigsaw and 2FASketch eBPF
-# Usage: 
-#   make stable IFACE=veth-recv   - Build and test StableSketch
-#   make jigsaw IFACE=veth0       - Build and test Jigsaw
-#   make twofa IFACE=veth-recv    - Build and test 2FASketch
-#   make test-stable IFACE=veth-recv - Full automated test for StableSketch
-#   make test-jigsaw IFACE=veth0     - Full automated test for Jigsaw
-#   make test-twofa IFACE=veth-recv  - Full automated test for 2FASketch
-
-# Compiler settings
 BPF_CLANG ?= clang
 CC ?= gcc
-# CC ?= $(BPF_CLANG)
+
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
-# Architecture detection
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
-# Common flags
 CFLAGS := -O2 -g -Wall
 BPF_CFLAGS := -O2 -g -target bpf -I. -D__TARGET_ARCH_$(ARCH)
 LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf 2>/dev/null || echo -I/usr/include)
 LIBBPF_LDFLAGS := $(shell pkg-config --libs libbpf 2>/dev/null || echo -lbpf -lelf -lz)
 
-# ============================================================================
-# STABLE SKETCH Configuration
-# ============================================================================
+
 STABLE_BPF_SRC := r_stable_sketch_ebpf.c
 STABLE_BPF_OBJ := r_stable_sketch_ebpf.o
 STABLE_SKEL := r_stable_sketch_ebpf.skel.h
@@ -33,7 +19,7 @@ STABLE_USER_SRC := r_stable_sketch_user.c
 STABLE_USER_BIN := r_stable_sketch_user
 STABLE_COMMON := r_stable_sketch_common.h
 
-# StableSketch runtime parameters (can be overridden)	
+
 STABLE_IFACE ?= veth-recv
 STABLE_TOPK ?= 1000
 STABLE_DURATION ?= 10
@@ -41,15 +27,12 @@ STABLE_TRACE ?= ../jigsaw_1.dat
 STABLE_PCAP ?= ../1.pcap
 STABLE_REPLAY_IFACE ?= veth-send
 
-# ============================================================================
-# JIGSAW Configuration
-# ============================================================================
 JIGSAW_BPF_SRC := jigsaw_xdp.c
 JIGSAW_BPF_OBJ := jigsaw_xdp.o
 JIGSAW_USER_SRC := jigsaw_loader.c
 JIGSAW_USER_BIN := jigsaw_loader
 
-# Jigsaw runtime parameters (can be overridden)
+
 JIGSAW_IFACE ?= veth0
 JIGSAW_REPLAY_IFACE ?= veth1
 JIGSAW_PIN_DIR ?= /sys/fs/bpf/jigsaw
@@ -58,9 +41,7 @@ JIGSAW_DURATION ?= 10
 JIGSAW_TRACE ?= ./dats/jigsaw_2.dat
 JIGSAW_PCAP ?= ./pcaps/2.pcap
 
-# ============================================================================
-# 2FASKETCH Configuration
-# ============================================================================
+
 TWOFA_BPF_SRC := twofa_sketch_ebpf.c
 TWOFA_BPF_OBJ := twofa_sketch_ebpf.o
 TWOFA_SKEL := twofa_sketch_ebpf.skel.h
@@ -68,21 +49,15 @@ TWOFA_USER_SRC := twofa_sketch_loader.c
 TWOFA_USER_BIN := twofa_sketch_loader
 TWOFA_COMMON := twofa_sketch_common.h
 
-# 2FASketch runtime parameters (can be overridden)
+
 TWOFA_IFACE ?= veth-recv
 TWOFA_REPLAY_IFACE ?= veth-send
 TWOFA_DURATION ?= 10
 TWOFA_TOPK ?= 1000
 TWOFA_PCAP ?= ./packets_from_dat.pcap
 
-# ============================================================================
-# Common files
-# ============================================================================
 VMLINUX := vmlinux.h
 
-# ============================================================================
-# Main targets
-# ============================================================================
 .PHONY: all help clean clean-all vmlinux
 .PHONY: stable jigsaw twofa
 .PHONY: stable-build jigsaw-build twofa-build
@@ -156,18 +131,13 @@ help:
 	@echo "  make twofa IFACE=veth-recv"
 	@echo "  sudo make test-twofa IFACE=veth-recv TWOFA_TOPK=500"
 
-# ============================================================================
-# VMLINUX generation
-# ============================================================================
 $(VMLINUX):
 	@echo "Generating vmlinux.h..."
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX)
 
 vmlinux: $(VMLINUX)
 
-# ============================================================================
-# STABLE SKETCH BUILD
-# ============================================================================
+
 stable: stable-build
 
 stable-build: $(STABLE_USER_BIN)
@@ -186,9 +156,7 @@ $(STABLE_USER_BIN): $(STABLE_USER_SRC) $(STABLE_SKEL) $(STABLE_COMMON)
 	@echo "Compiling StableSketch userspace program..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) $(STABLE_USER_SRC) -o $(STABLE_USER_BIN) $(LIBBPF_LDFLAGS)
 
-# ============================================================================
-# JIGSAW BUILD
-# ============================================================================
+
 jigsaw: jigsaw-build jigsaw-setup
 
 jigsaw-build: $(JIGSAW_BPF_OBJ) $(JIGSAW_USER_BIN) 
@@ -207,9 +175,9 @@ jigsaw-setup:
 	@sudo mkdir -p $(JIGSAW_PIN_DIR)
 	@sudo rm -f $(JIGSAW_PIN_DIR)/aux_map $(JIGSAW_PIN_DIR)/bucket_map $(JIGSAW_PIN_DIR)/xdp_stats_map 2>/dev/null || true
 
-# ============================================================================
-# 2FASKETCH BUILD 
-# ============================================================================
+
+
+
 twofa: twofa-build
 
 twofa-build: $(TWOFA_USER_BIN)
@@ -227,9 +195,7 @@ $(TWOFA_USER_BIN): $(TWOFA_USER_SRC) $(TWOFA_SKEL) $(TWOFA_COMMON)
 	@echo "Compiling 2FASketch loader..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) -D_BPF_H_ $(TWOFA_USER_SRC) -o $(TWOFA_USER_BIN) $(LIBBPF_LDFLAGS) -lpcap
 
-# ============================================================================
-# RUN TARGETS
-# ============================================================================
+
 stable-run: stable-build
 	@echo "=== Running StableSketch ==="
 	@echo "Interface: $(IFACE)"
@@ -257,9 +223,7 @@ twofa-run: twofa-build
 	@echo ""
 	@echo ""
 	sudo ./$(TWOFA_USER_BIN) -i $(TWOFA_IFACE) -k $(TWOFA_TOPK) -D $(TWOFA_DURATION) -t $(TWOFA_PCAP)
-# ============================================================================
-# REPLAY TARGETS
-# ============================================================================
+
 replay-stable:
 	@echo "=== Replaying packets for StableSketch ==="
 	@echo "Interface: $(STABLE_REPLAY_IFACE)"
@@ -278,9 +242,7 @@ replay-twofa:
 	@echo "PCAP: $(TWOFA_PCAP)"
 	sudo tcpreplay --intf1=$(TWOFA_REPLAY_IFACE) --topspeed $(TWOFA_PCAP)
 
-# ============================================================================
-# AUTOMATED TEST TARGETS
-# ============================================================================
+
 test-stable: stable-build
 	@echo "=== Running StableSketch automated test ==="
 	@echo "Starting StableSketch in background..."
@@ -332,9 +294,7 @@ test-twofa: twofa-build
 	@cat twofa_test_output.log | tr -d '\r'
 	@rm -f /tmp/twofa_loader.pid
 
-# ============================================================================
-# STOP XDP
-# ============================================================================
+
 stop-xdp-stable:
 	@echo "Detaching StableSketch XDP from $(IFACE)..."
 	@sudo ip link set dev $(IFACE) xdp off 2>/dev/null || true
@@ -347,9 +307,7 @@ stop-xdp-twofa:
 	@echo "Detaching 2FASketch XDP from $(TWOFA_IFACE)..."
 	@sudo ip link set dev $(TWOFA_IFACE) xdp off 2>/dev/null || true
 
-# ============================================================================
-# CLEANUP
-# ============================================================================
+
 clean:
 	@echo "Cleaning all build artifacts..."
 	rm -f $(STABLE_BPF_OBJ) $(STABLE_SKEL) $(STABLE_USER_BIN)
