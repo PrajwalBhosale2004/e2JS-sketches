@@ -24,13 +24,13 @@ STABLE_TRACE ?= ./10.dat
 STABLE_PCAP ?= ./packets_from_dat.pcap
 STABLE_REPLAY_IFACE ?= veth-send
 
-JIGSAW_BPF_SRC := jigsaw_xdp.c
-JIGSAW_BPF_OBJ := jigsaw_xdp.o
+JIGSAW_BPF_SRC := jigsaw_ebpf.c
+JIGSAW_BPF_OBJ := jigsaw_ebpf.o
 JIGSAW_USER_SRC := jigsaw_loader.c
 JIGSAW_USER_BIN := jigsaw_loader
 
-JIGSAW_IFACE ?= veth0
-JIGSAW_REPLAY_IFACE ?= veth1
+JIGSAW_IFACE ?= veth-recv
+JIGSAW_REPLAY_IFACE ?= veth-send
 JIGSAW_PIN_DIR ?= /sys/fs/bpf/jigsaw
 JIGSAW_TOPK ?= 1000
 JIGSAW_DURATION ?= 10
@@ -157,7 +157,7 @@ jigsaw: jigsaw-build jigsaw-setup
 jigsaw-build: $(JIGSAW_BPF_OBJ) $(JIGSAW_USER_BIN) 
 	@echo "=== Jigsaw built successfully ==="
 
-$(JIGSAW_BPF_OBJ): $(JIGSAW_BPF_SRC)
+$(JIGSAW_BPF_OBJ): $(VMLINUX) $(JIGSAW_BPF_SRC) 
 	@echo "Compiling Jigsaw BPF program..."
 	$(BPF_CLANG) $(BPF_CFLAGS) -c $(JIGSAW_BPF_SRC) -o $(JIGSAW_BPF_OBJ)
 

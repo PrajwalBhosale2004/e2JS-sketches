@@ -17,7 +17,6 @@
 #include <bpf/bpf.h>
 
 #include "jigsaw_parameters.h"
-static int counter_fd;
 
 static int ifindex = -1;
 static struct bpf_link *xdp_link = NULL;
