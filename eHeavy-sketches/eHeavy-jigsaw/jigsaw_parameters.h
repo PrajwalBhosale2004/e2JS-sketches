@@ -6,14 +6,12 @@
 #define SIGNAL_BITS 2
 #define AL_THRESHOLD 512
 
-#define NUM_WINDOWS 1600
-
-
 #define MI_A 2147483647ULL
 #define MI_A_INV 4503597479886847ULL
 #define MI_MASK 4503599627370495ULL  
 #define MASK_26BITS 0x3FFFFFF
 
+#define LAT_HIST_BUCKETS 64
 
 #define AUX_LIST_WORDS ((BUCKET_NUM * CELL_NUM_H * (RESIDUAL_PART_BITS + SIGNAL_BITS) + 63) / 64)
 
@@ -23,11 +21,9 @@ struct xdp_stats {
 };
 
 struct jigsaw_cell {
-    __u16 fp;      
+    __u16 fp;
     __u32 counter; 
-    __u64 flow_size; 
-    __u16 last_seen_window_id;
-    __u16 first_seen_window_id;
+    __u64 flow_size;
 };
 
 struct jigsaw_bucket {

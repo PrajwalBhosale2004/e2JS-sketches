@@ -49,21 +49,19 @@ struct {
     __uint(max_entries, AUX_LIST_WORDS);
 } auxiliary_list_map SEC(".maps");
 
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, BUCKET_NUM);
+    __type(key, __u32);
+    __type(value, __u64);
+} latency_hist SEC(".maps");
 
 struct {
-    __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(key_size, sizeof(__u32));
-    __uint(value_size, sizeof(__u32));
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __uint(max_entries, 1);
-} packets_per_window_map SEC(".maps");
-
-
-struct {
-    __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(key_size, sizeof(__u32));
-    __uint(value_size, sizeof(__u64));
-    __uint(max_entries, 1);
-} packet_sequence_map SEC(".maps");
+    __type(key, __u32);
+    __type(value, __u64);
+} pkt_count SEC(".maps");
 
 
 static __u32 rng_state = 0x12345678;
@@ -73,18 +71,6 @@ static __always_inline __u32 simple_random(void){
     rng_state ^= rng_state >> 17;
     rng_state ^= rng_state << 5;
     return rng_state;
-}
-
-
-static __always_inline __u64 get_packet_sequence_number(void){
-    __u32 key = 0;
-    __u64 *seq = bpf_map_lookup_elem(&packet_sequence_map, &key);
-    if(!seq){
-        __u64 init = 0;
-        bpf_map_update_elem(&packet_sequence_map, &key, &init, BPF_ANY);
-        return 0;
-    }
-    return __sync_fetch_and_add(seq, 1);
 }
 
 
@@ -256,21 +242,8 @@ static __always_inline void set_signal_field_of_al(__u32 slot_index, __u8 counte
     }
 }
 
-static __always_inline __u16 get_current_window_id(__u64 packet_seq, __u64 packets_per_window){
-    if(packets_per_window == 0) return 0;
-    return (__u16)(packet_seq / packets_per_window);
-}
 
-
-static __always_inline void jigsaw_insert(__u8 key[KEY_SIZE], __u64 current_seq_num, __u64 packet_size){
-    __u32 key_ppw = 0;
-    __u32 *ppw_ptr = bpf_map_lookup_elem(&packets_per_window_map, &key_ppw);
-    __u32 packets_per_window = ppw_ptr ? *ppw_ptr : 250000; 
-
-    if(packets_per_window == 0){
-        packets_per_window = 1600;  
-    }
-
+static __always_inline void jigsaw_insert(__u8 key[KEY_SIZE], __u64 packet_size){
     __u32 bucket_idx;
     __u16 fp;
     __u64 residual_part[2] = {0, 0};
@@ -283,8 +256,6 @@ static __always_inline void jigsaw_insert(__u8 key[KEY_SIZE], __u64 current_seq_
     
     struct jigsaw_bucket *bucket = bpf_map_lookup_elem(&bucket_map, &bucket_idx);
     if(!bucket) return;
-    
-    __u16 current_window_id = get_current_window_id(current_seq_num, packets_per_window);
 
     int matched_cell_idx = -1;
     __u32 matched_cell_counter = 0;
@@ -303,10 +274,8 @@ static __always_inline void jigsaw_insert(__u8 key[KEY_SIZE], __u64 current_seq_
         
         if(cell_counter == 0){
             bucket->cells[i].fp = fp;
-            bucket->cells[i].counter = 1;
-            bucket->cells[i].flow_size = packet_size;
-            bucket->cells[i].first_seen_window_id = current_window_id;
-            bucket->cells[i].last_seen_window_id = current_window_id;
+            __sync_fetch_and_add(&bucket->cells[i].counter, 1);
+            __sync_fetch_and_add(&bucket->cells[i].flow_size, packet_size);
 
             __u32 slot_index = bucket_idx * CELL_NUM_H + i;
             set_residual_part_field_of_al(slot_index, residual_part);
@@ -344,10 +313,8 @@ static __always_inline void jigsaw_insert(__u8 key[KEY_SIZE], __u64 current_seq_
             
             if(cell_counter == 0){
                 bucket->cells[i].fp = fp;
-                bucket->cells[i].counter = 1;
-                bucket->cells[i].flow_size = packet_size;
-                bucket->cells[i].first_seen_window_id = current_window_id;
-                bucket->cells[i].last_seen_window_id = current_window_id;
+                __sync_fetch_and_add(&bucket->cells[i].counter, 1);
+                __sync_fetch_and_add(&bucket->cells[i].flow_size, packet_size);
                 return;
             }
             
@@ -376,10 +343,8 @@ static __always_inline void jigsaw_insert(__u8 key[KEY_SIZE], __u64 current_seq_
             if((rand % smallest_cell_counter) == 0){
                 if(smallest_cell_idx >= 0){
                     bucket->cells[smallest_cell_idx].fp = fp;
-                    bucket->cells[smallest_cell_idx].counter = 1;
-                    bucket->cells[smallest_cell_idx].flow_size = packet_size;
-                    bucket->cells[smallest_cell_idx].first_seen_window_id = current_window_id;
-                    bucket->cells[smallest_cell_idx].last_seen_window_id = current_window_id;
+                    __sync_fetch_and_add(&bucket->cells[smallest_cell_idx].counter, 1);
+                    __sync_fetch_and_add(&bucket->cells[smallest_cell_idx].flow_size, packet_size);
                 }
                 if(smallest_cell_idx >= 0 && smallest_cell_idx < CELL_NUM_H){
                     __u32 slot_index = bucket_idx * CELL_NUM_H + smallest_cell_idx;
@@ -394,36 +359,27 @@ static __always_inline void jigsaw_insert(__u8 key[KEY_SIZE], __u64 current_seq_
     if(matched_cell_idx >= CELL_NUM_H){
         
         if((matched_cell_counter + 1) > smallest_heavy_counter && matched_cell_idx >= 0 && smallest_heavy_idx >= 0){
-            __u32 first = bucket->cells[matched_cell_idx].first_seen_window_id;
-
             bucket->cells[matched_cell_idx].fp = smallest_heavy_fp;
             bucket->cells[matched_cell_idx].counter = smallest_heavy_counter;
             bucket->cells[matched_cell_idx].flow_size = 0;
-            bucket->cells[matched_cell_idx].first_seen_window_id = bucket->cells[smallest_heavy_idx].first_seen_window_id;
-            bucket->cells[matched_cell_idx].last_seen_window_id = bucket->cells[smallest_heavy_idx].last_seen_window_id;
 
             bucket->cells[smallest_heavy_idx].fp = fp;
             bucket->cells[smallest_heavy_idx].counter = matched_cell_counter + 1;
             bucket->cells[smallest_heavy_idx].flow_size = packet_size;
-            bucket->cells[smallest_heavy_idx].first_seen_window_id = first;
-            bucket->cells[smallest_heavy_idx].last_seen_window_id = current_window_id;
             
             __u32 slot_index = bucket_idx * CELL_NUM_H + smallest_heavy_idx;
             set_residual_part_field_of_al(slot_index, residual_part);
         }
         else{
-            bucket->cells[matched_cell_idx].counter = matched_cell_counter + 1;
-            bucket->cells[matched_cell_idx].flow_size += packet_size;
-            bucket->cells[matched_cell_idx].last_seen_window_id = current_window_id;
+            __sync_fetch_and_add(&bucket->cells[matched_cell_idx].counter, 1);
+            __sync_fetch_and_add(&bucket->cells[matched_cell_idx].flow_size, packet_size);
         }
     }
     else{
         
-        bucket->cells[matched_cell_idx].counter = matched_cell_counter + 1;
-        bucket->cells[matched_cell_idx].flow_size += packet_size;
-        bucket->cells[matched_cell_idx].last_seen_window_id = current_window_id;
-        
-        
+        __sync_fetch_and_add(&bucket->cells[matched_cell_idx].counter, 1);
+        __sync_fetch_and_add(&bucket->cells[matched_cell_idx].flow_size, packet_size);
+
         __u32 new_counter_value = matched_cell_counter + 1;
         if((new_counter_value) == AL_THRESHOLD || 
             ((new_counter_value) > AL_THRESHOLD && (simple_random() % new_counter_value) == 0)){ 
@@ -450,6 +406,25 @@ static __always_inline void jigsaw_insert(__u8 key[KEY_SIZE], __u64 current_seq_
             }
         }
     }
+}
+
+static __always_inline __u32 latency_to_bucket(__u64 ns)
+{
+    __u32 bucket = 0;
+    if (ns == 0)
+        return 0;
+
+    #pragma unroll
+    for (int i = 63; i >= 0; i--) {
+        if (ns >= ((__u64)1 << i)) {
+            bucket = (__u32)i;
+            break;
+        }
+    }
+
+    if (bucket >= LAT_HIST_BUCKETS)
+        bucket = LAT_HIST_BUCKETS - 1;
+    return bucket;
 }
 
 static __always_inline int parse_packet(struct xdp_md *ctx, struct pkt_5tuple *tuple){
@@ -557,12 +532,25 @@ int jigsaw_xdp(struct xdp_md *ctx){
     flow_key[12] = tuple.proto;
     
     
-    rng_state = flow_key[0] ^ (flow_key[1] << 8) ^ (flow_key[2] << 16) ^ (flow_key[3] << 24) ^ bpf_ktime_get_ns();
+    __u64 t_before = bpf_ktime_get_ns();
+    rng_state = flow_key[0] ^ (flow_key[1] << 8) ^ (flow_key[2] << 16) ^ (flow_key[3] << 24) ^ t_before;
 
-    __u64 current_seq_num = get_packet_sequence_number();
+    jigsaw_insert(flow_key, packet_size); //, current_seq_num
+
+    __u64 t_after  = bpf_ktime_get_ns();
+    __u64 elapsed  = t_after - t_before;
+    __u32 lat_key  = latency_to_bucket(elapsed);
+
+    __u64 *lat_slot = bpf_map_lookup_elem(&latency_hist, &lat_key);
+    if (lat_slot)
+        __sync_fetch_and_add(lat_slot, 1);
+
     
-    jigsaw_insert(flow_key, current_seq_num, packet_size);
- 
+    __u32 pkt_cnt_key = 0;
+    __u64 *pkt_cnt = bpf_map_lookup_elem(&pkt_count, &pkt_cnt_key);
+    if (pkt_cnt)
+        __sync_fetch_and_add(pkt_cnt, 1);
+
  __u32 counter_key=0;
  __u64 *val = bpf_map_lookup_elem(&insert_counter, &counter_key);
   if (val)

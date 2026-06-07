@@ -20,8 +20,8 @@ STABLE_COMMON := stable_sketch_common.h
 STABLE_IFACE ?= veth-recv
 STABLE_TOPK ?= 1000
 STABLE_DURATION ?= 10
-STABLE_TRACE ?= ./10.dat
-STABLE_PCAP ?= ./packets_from_dat.pcap
+STABLE_TRACE ?= ../../dats/0.dat
+STABLE_PCAP ?= ../../pcaps/0.pcap
 STABLE_REPLAY_IFACE ?= veth-send
 
 JIGSAW_BPF_SRC := jigsaw_ebpf.c
@@ -31,11 +31,11 @@ JIGSAW_USER_BIN := jigsaw_loader
 
 JIGSAW_IFACE ?= veth-recv
 JIGSAW_REPLAY_IFACE ?= veth-send
-JIGSAW_PIN_DIR ?= /sys/fs/bpf/jigsaw
+JIGSAW_PIN_DIR ?= /sys/fs/bpf/jigsaw/
 JIGSAW_TOPK ?= 1000
 JIGSAW_DURATION ?= 10
-JIGSAW_TRACE ?= ./dats/jigsaw_2.dat
-JIGSAW_PCAP ?= ./pcaps/2.pcap
+JIGSAW_TRACE ?= ../../dats/0.dat
+JIGSAW_PCAP ?= ../../pcaps/0.pcap
 
 TWOFA_BPF_SRC := twofa_sketch_ebpf.c
 TWOFA_BPF_OBJ := twofa_sketch_ebpf.o
@@ -48,7 +48,7 @@ TWOFA_IFACE ?= veth-recv
 TWOFA_REPLAY_IFACE ?= veth-send
 TWOFA_DURATION ?= 10
 TWOFA_TOPK ?= 1000
-TWOFA_PCAP ?= ./1.pcap
+TWOFA_PCAP ?= ../../pcaps/0.pcap
 TWOFA_MEMORY ?= 1024  
 
 VMLINUX := vmlinux.h
@@ -152,7 +152,7 @@ $(STABLE_USER_BIN): $(STABLE_USER_SRC) $(STABLE_SKEL) $(STABLE_COMMON)
 	@echo "Compiling StableSketch userspace program..."
 	$(CC) $(CFLAGS) $(LIBBPF_CFLAGS) $(STABLE_USER_SRC) -o $(STABLE_USER_BIN) $(LIBBPF_LDFLAGS)
 
-jigsaw: jigsaw-build jigsaw-setup
+jigsaw: jigsaw-setup jigsaw-build
 
 jigsaw-build: $(JIGSAW_BPF_OBJ) $(JIGSAW_USER_BIN) 
 	@echo "=== Jigsaw built successfully ==="
@@ -167,8 +167,9 @@ $(JIGSAW_USER_BIN): $(JIGSAW_USER_SRC)
 
 jigsaw-setup:
 	@echo "Setting up Jigsaw environment..."
-	@sudo mkdir -p $(JIGSAW_PIN_DIR)
-	@sudo rm -f $(JIGSAW_PIN_DIR)/aux_map $(JIGSAW_PIN_DIR)/bucket_map $(JIGSAW_PIN_DIR)/xdp_stats_map 2>/dev/null || true
+	@sudo bash -c 'rm -rf $(JIGSAW_PIN_DIR) 2>/dev/null || true'
+	@sudo bash -c 'mkdir -p $(JIGSAW_PIN_DIR)'
+	@sudo bash -c 'sync; sleep 0.5'
 
 twofa: twofa-build
 
@@ -197,7 +198,7 @@ stable-run: stable-build
 	@echo ""
 	sudo ./$(STABLE_USER_BIN) -i $(IFACE) -k $(STABLE_TOPK) -D $(STABLE_DURATION) -t $(STABLE_TRACE)
 
-jigsaw-run: jigsaw-build jigsaw-setup
+jigsaw-run: jigsaw-setup jigsaw-build
 	@echo "=== Running Jigsaw ==="
 	@echo "Interface: $(JIGSAW_IFACE)"
 	@echo "Top-K: $(JIGSAW_TOPK)"
@@ -251,7 +252,7 @@ test-stable: stable-build
 	@cat stable_test_output.log | tr -d '\r'
 	@rm -f /tmp/stable_sketch.pid
 
-test-jigsaw: jigsaw-build jigsaw-setup
+test-jigsaw: jigsaw-setup jigsaw-build
 	@test -f $(JIGSAW_BPF_OBJ) || (echo "ERROR: $(JIGSAW_BPF_OBJ) not found!"; exit 1)
 	@echo "=== Running Jigsaw automated test ==="
 	@echo "Starting Jigsaw in background..."
@@ -269,6 +270,19 @@ test-jigsaw: jigsaw-build jigsaw-setup
 	@echo "=== Jigsaw Test Results ==="
 	@cat jigsaw_test_output.log | tr -d '\r'
 	@rm -f /tmp/jigsaw_loader.pid
+
+jigsaw-listen: jigsaw-build jigsaw-setup
+	@echo "=== Jigsaw (listen-only) ==="
+	@echo "Interface : $(JIGSAW_IFACE)"
+	@echo "Top-K     : $(JIGSAW_TOPK)"
+	@echo "Duration  : $(JIGSAW_DURATION)s"
+	@echo ""
+	sudo ./$(JIGSAW_USER_BIN) \
+		-i $(JIGSAW_IFACE) \
+		-o $(JIGSAW_PIN_DIR) \
+		-k $(JIGSAW_TOPK) \
+		-D $(JIGSAW_DURATION) \
+		$(JIGSAW_BPF_OBJ)
 
 test-twofa: twofa-build
 	@echo "=== Running 2FASketch automated test ==="
@@ -297,7 +311,8 @@ clean:
 	rm -f stable_test_output.log jigsaw_test_output.log
 	rm -f /tmp/stable_sketch.pid /tmp/jigsaw_loader.pid
 	@echo "Cleaning Jigsaw pinned maps..."
-	@sudo rm -f $(JIGSAW_PIN_DIR)/aux_map $(JIGSAW_PIN_DIR)/bucket_map $(JIGSAW_PIN_DIR)/xdp_stats_map 2>/dev/null || true
+	@sudo rm -f $(JIGSAW_PIN_DIR)/auxiliary_list_map $(JIGSAW_PIN_DIR)/bucket_map $(JIGSAW_PIN_DIR)/xdp_stats_map $(JIGSAW_PIN_DIR)/insert_counter $(JIGSAW_PIN_DIR)/packets_per_window_map 2>/dev/null || true
+	@sudo rmdir $(JIGSAW_PIN_DIR) 2>/dev/null || true
 	@echo "Done"
 
 clean-all: clean

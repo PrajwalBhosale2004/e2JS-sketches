@@ -41,12 +41,12 @@ struct {
 } packet_sequence_map SEC(".maps");
 
 
-struct {
-    __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(key_size, sizeof(__u32));
-    __uint(value_size, sizeof(__u32));
-    __uint(max_entries, 1);
-} packets_per_window_map SEC(".maps");
+// struct {
+//     __uint(type, BPF_MAP_TYPE_ARRAY);
+//     __uint(key_size, sizeof(__u32));
+//     __uint(value_size, sizeof(__u32));
+//     __uint(max_entries, 1);
+// } packets_per_window_map SEC(".maps");
 
 
 static __u32 rng_state = 0x12345678;
@@ -245,13 +245,13 @@ static __always_inline __u16 get_current_window(__u64 packet_seq, __u64 packets_
 
 
 static __always_inline void persistent_insert(__u8 key[KEY_SIZE], __u64 current_seq, __u64 packet_size){
-    __u32 key_ppw = 0;
-    __u32 *ppw_ptr = bpf_map_lookup_elem(&packets_per_window_map, &key_ppw);
-    __u32 packets_per_window = ppw_ptr ? *ppw_ptr : 250000; 
+    // __u32 key_ppw = 0;
+    // __u32 *ppw_ptr = bpf_map_lookup_elem(&packets_per_window_map, &key_ppw);
+    __u32 packets_per_window = PACKETS_PER_WINDOW; 
 
-    if(packets_per_window == 0){
-        packets_per_window = 1600;  
-    }
+    // if(packets_per_window == 0){
+    //     packets_per_window = 1600;  
+    // }
 
     __u32 bucket_idx;
     __u16 fp;

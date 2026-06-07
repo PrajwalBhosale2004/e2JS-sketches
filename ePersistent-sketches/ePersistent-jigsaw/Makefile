@@ -22,8 +22,8 @@ PS_PIN_DIR ?= /sys/fs/bpf/persistent
 PS_TOPK ?= 50
 PS_DURATION ?= 5
 
-PS_TRACE ?= ../../dats/2.dat
-PS_PCAP ?= ../../pcaps/2.pcap
+PS_TRACE ?= ../../dats/1.dat
+PS_PCAP ?= ../../pcaps/1.pcap
 
 
 .PHONY: all help clean

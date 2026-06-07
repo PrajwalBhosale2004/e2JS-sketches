@@ -22,8 +22,7 @@ static int ifindex = -1;
 static struct bpf_link *xdp_link = NULL;
 static char pin_dir[256] = {0};
 static volatile sig_atomic_t exiting = 0;
-uint32_t packets_per_window = 0;
-
+// uint32_t packets_per_window = 500;
 
 
 typedef struct persistent_pair{
@@ -623,19 +622,19 @@ int main(int argc, char **argv){
     
     ht_t gt_ht = {0};
     size_t n_trace_items = 0;
-
+    // size_t total_items = 0;
     if(trace_file){
         FILE *f = fopen(trace_file, "rb");
         fseek(f, 0, SEEK_END);
-        size_t total_items = ftell(f) / KEY_SIZE;
+        // total_items = ftell(f) / KEY_SIZE;
         fclose(f);
 
-        packets_per_window = (total_items + NUM_WINDOWS - 1) / NUM_WINDOWS;
+        // packets_per_window = (total_items + NUM_WINDOWS - 1) / NUM_WINDOWS;
         printf("Building ground-truth from %s....\n", trace_file);
 
-        n_trace_items = build_persistent_ground_truth(&gt_ht, trace_file, packets_per_window);
-        printf("Ground truth: %zu packets, %zu flows, %u windows\n", n_trace_items, gt_ht.n_entries, NUM_WINDOWS);
-        printf("Inferred packets per window: %u\n", packets_per_window);
+        n_trace_items = build_persistent_ground_truth(&gt_ht, trace_file, PACKETS_PER_WINDOW);
+        printf("Ground truth: %zu packets, %zu flows, %lu windows\n", n_trace_items, gt_ht.n_entries, n_trace_items / PACKETS_PER_WINDOW);
+        // printf("Inferred packets per window: %u\n", packets_per_window);
     }
 
     signal(SIGINT, int_exit);
@@ -661,15 +660,15 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    if(trace_file){
-        map = bpf_object__find_map_by_name(obj, "packets_per_window_map");
-        if(map){
-            int ppw_fd = bpf_map__fd(map);
-            uint32_t ppw_key = 0;
-            bpf_map_update_elem(ppw_fd, &ppw_key, &packets_per_window, BPF_ANY);
-            printf("Set packets_per_window in BPF map: %u\n", packets_per_window);
-        }
-    }
+    // if(trace_file){
+    //     map = bpf_object__find_map_by_name(obj, "packets_per_window_map");
+    //     if(map){
+    //         int ppw_fd = bpf_map__fd(map);
+    //         uint32_t ppw_key = 0;
+    //         bpf_map_update_elem(ppw_fd, &ppw_key, &packets_per_window, BPF_ANY);
+    //         printf("Set packets_per_window in BPF map: %u\n", packets_per_window);
+    //     }
+    // }
 
     xdp_link = bpf_program__attach_xdp(prog, ifindex);
     if(!xdp_link){
@@ -683,9 +682,9 @@ int main(int argc, char **argv){
     printf("  Buckets: %d\n", BUCKET_NUM);
     printf("  Cells per bucket: %d heavy + %d light = %d total\n",
            CELL_NUM_H, CELL_NUM_L, CELL_NUM_H + CELL_NUM_L);
-    printf("  Packets per window: %u\n", packets_per_window);
+    printf("  Packets per window: %u\n", PACKETS_PER_WINDOW);
     printf("  Tracked windows: %d\n", 8);
-    printf("  Persistence threshold: %.2f windows\n", NUM_WINDOWS*PERSISTENCE_THRESHOLD);
+    printf("  Persistence threshold: %.2f windows\n", (n_trace_items / PACKETS_PER_WINDOW) * PERSISTENCE_THRESHOLD);
 
     double bucket_mem = BUCKET_NUM * sizeof(struct persistent_bucket);
     double aux_mem = AUX_LIST_WORDS * 8;
@@ -715,8 +714,8 @@ int main(int argc, char **argv){
     map = bpf_object__find_map_by_name(obj, "xdp_stats_map");
     bpf_map__pin(map, "/sys/fs/bpf/persistent/xdp_stats_map");
 
-    map = bpf_object__find_map_by_name(obj, "packets_per_window_map");
-    bpf_map__pin(map, "/sys/fs/bpf/persistent/packets_per_window_map");
+    // map = bpf_object__find_map_by_name(obj, "packets_per_window_map");
+    // bpf_map__pin(map, "/sys/fs/bpf/persistent/packets_per_window_map");
 
     char stats_pin[512];
     snprintf(stats_pin, sizeof(stats_pin), "%s/xdp_stats_map", pin_dir);
@@ -795,11 +794,11 @@ int main(int argc, char **argv){
 
     if(n_pairs > 0){
         qsort(pairs, n_pairs, sizeof(persistent_pair_t), pair_persist_cmp_desc);
-        int persistence_threshold = NUM_WINDOWS * PERSISTENCE_THRESHOLD;
+        int persistence_threshold = (n_trace_items / PACKETS_PER_WINDOW) * PERSISTENCE_THRESHOLD;
         print_persistent_flows(pairs, n_pairs, persistence_threshold);
 
         if(trace_file && gt_ht.n_entries > 0){
-            compute_persistent_metrics(pairs, n_pairs, &gt_ht, NUM_WINDOWS, persistence_threshold);
+            compute_persistent_metrics(pairs, n_pairs, &gt_ht, n_trace_items / PACKETS_PER_WINDOW, persistence_threshold);
         }
 
         int k = topK;

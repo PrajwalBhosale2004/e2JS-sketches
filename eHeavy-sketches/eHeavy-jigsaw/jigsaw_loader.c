@@ -22,8 +22,6 @@ static int ifindex = -1;
 static struct bpf_link *xdp_link = NULL;
 static char pin_dir[256] = {0};
 static volatile sig_atomic_t exiting = 0;
-uint32_t packets_per_window = 0;
-
 
 typedef struct pair{
     uint8_t key[KEY_SIZE];
@@ -45,8 +43,6 @@ typedef struct ht_entry{
     uint8_t key[KEY_SIZE];
     uint32_t count;
     uint64_t flow_size;
-    uint16_t first_seen_window_id;
-    uint16_t last_seen_window_id;
     struct ht_entry *next;
 } ht_entry_t;
 
@@ -162,7 +158,6 @@ size_t ht_collect_pairs(ht_t *ht, pair_t *pairs, size_t capacity){
             memcpy(pairs[written].key, e->key, KEY_SIZE);
             pairs[written].count = e->count;
             pairs[written].bytes = e->flow_size;
-            pairs[written].duration = e->last_seen_window_id - e->first_seen_window_id + 1;
             written++;
             e = e->next;
         }
@@ -288,9 +283,6 @@ static int read_jigsaw_candidates(int jigsaw_fd, int aux_fd, pair_t **out_pairs,
                     if (memcmp(e->key, key, KEY_SIZE) == 0){
                         e->count = bucket.cells[cell_idx].counter;
                         e->flow_size = bucket.cells[cell_idx].flow_size;
-                        e->first_seen_window_id = bucket.cells[cell_idx].first_seen_window_id;
-                        e->last_seen_window_id = bucket.cells[cell_idx].last_seen_window_id;
-
                         break;
                     }
                     e = e->next;
@@ -305,9 +297,6 @@ static int read_jigsaw_candidates(int jigsaw_fd, int aux_fd, pair_t **out_pairs,
                         if (memcmp(e->key, key, KEY_SIZE) == 0){
                             e->count = bucket.cells[cell_idx].counter;
                             e->flow_size = bucket.cells[cell_idx].flow_size;
-                            e->first_seen_window_id = bucket.cells[cell_idx].first_seen_window_id;
-                            e->last_seen_window_id = bucket.cells[cell_idx].last_seen_window_id;
-
                             break;
                         }
                         e = e->next;
@@ -539,6 +528,16 @@ static void print_topk_table(pair_t *pairs, int k){
     printf("---------------------------------------------------------------------------------------------------------------------------\n");
 }
 
+static void bucket_to_range(uint32_t b, uint64_t *lo, uint64_t *hi)
+{
+    if (b == 0) {
+        *lo = 0;
+        *hi = 1;
+        return;
+    }
+    *lo = (uint64_t)1 << b;
+    *hi = ((uint64_t)1 << (b + 1)) - 1;
+}
 
 static void int_exit(int sig){
     exiting = 1;
@@ -556,6 +555,145 @@ static void usage(const char *prog){
             prog);
 }
 
+static void dump_latency_stats(int hist_fd)
+{
+    if (hist_fd < 0) {
+        printf("Latency histogram map not available.\n");
+        return;
+    }
+
+    int nr_cpus = libbpf_num_possible_cpus();
+
+    __u64 hist[LAT_HIST_BUCKETS] = {0};
+    __u64 total_pkts = 0;
+
+    /* Aggregate per-CPU histogram */
+    for (__u32 b = 0; b < LAT_HIST_BUCKETS; b++) {
+
+        __u64 vals[nr_cpus];
+        memset(vals, 0, sizeof(vals));
+
+        if (bpf_map_lookup_elem(hist_fd, &b, vals) == 0) {
+
+            for (int cpu = 0; cpu < nr_cpus; cpu++) {
+                hist[b] += vals[cpu];
+            }
+
+            total_pkts += hist[b];
+        }
+    }
+
+    if (total_pkts == 0) {
+        printf("No packets recorded for latency.\n");
+        return;
+    }
+
+    __u64 p50_target =
+        (total_pkts * 50ULL) / 100ULL;
+
+    __u64 p95_target =
+        (total_pkts * 95ULL) / 100ULL;
+
+    __u64 p99_target =
+        (total_pkts * 99ULL) / 100ULL;
+
+    __u64 p999_target =
+        (total_pkts * 999ULL) / 1000ULL;
+
+    int p50_found = 0;
+    int p95_found = 0;
+    int p99_found = 0;
+    int p999_found = 0;
+
+    __u64 p50_lo=0, p50_hi=0;
+    __u64 p95_lo=0, p95_hi=0;
+    __u64 p99_lo=0, p99_hi=0;
+    __u64 p999_lo=0, p999_hi=0;
+
+    __u64 cumulative = 0;
+
+    printf("\n=== PER-PACKET PROCESSING LATENCY ===\n");
+    printf("Total packets measured: %llu\n\n", total_pkts);
+
+    printf("%-6s %-18s %-18s %s\n",
+           "Bucket",
+           "Lower bound (ns)",
+           "Upper bound (ns)",
+           "Count");
+
+    for (__u32 b = 0; b < LAT_HIST_BUCKETS; b++) {
+
+        if (hist[b] == 0)
+            continue;
+
+        uint64_t lo, hi;
+        bucket_to_range(b, &lo, &hi);
+
+        printf("[%2u]   %-18lu %-18lu %llu\n",
+               b,
+               lo,
+               hi,
+               hist[b]);
+
+        cumulative += hist[b];
+
+        if (!p50_found && cumulative >= p50_target) {
+            p50_lo = lo;
+            p50_hi = hi;
+            p50_found = 1;
+        }
+
+        if (!p95_found && cumulative >= p95_target) {
+            p95_lo = lo;
+            p95_hi = hi;
+            p95_found = 1;
+        }
+
+        if (!p99_found && cumulative >= p99_target) {
+            p99_lo = lo;
+            p99_hi = hi;
+            p99_found = 1;
+        }
+
+        if (!p999_found && cumulative >= p999_target) {
+            p999_lo = lo;
+            p999_hi = hi;
+            p999_found = 1;
+        }
+    }
+
+    printf("\n=== TAIL LATENCY SUMMARY ===\n");
+
+    if (p50_found) {
+        printf("P50   : [%llu , %llu] ns  (~%.2f us)\n",
+               p50_lo,
+               p50_hi,
+               ((double)(p50_lo + p50_hi) / 2.0) / 1000.0);
+    }
+
+    if (p95_found) {
+        printf("P95   : [%llu , %llu] ns  (~%.2f us)\n",
+               p95_lo,
+               p95_hi,
+               ((double)(p95_lo + p95_hi) / 2.0) / 1000.0);
+    }
+
+    if (p99_found) {
+        printf("P99   : [%llu , %llu] ns  (~%.2f us)\n",
+               p99_lo,
+               p99_hi,
+               ((double)(p99_lo + p99_hi) / 2.0) / 1000.0);
+    }
+
+    if (p999_found) {
+        printf("P99.9 : [%llu , %llu] ns  (~%.2f us)\n",
+               p999_lo,
+               p999_hi,
+               ((double)(p999_lo + p999_hi) / 2.0) / 1000.0);
+    }
+
+    printf("=================================\n\n");
+}
 
 
 int main(int argc, char **argv){
@@ -612,9 +750,6 @@ int main(int argc, char **argv){
         printf("Building ground-truth from %s....\n", trace_file);
         n_trace_items = build_ground_truth_from_trace(&gt_ht, trace_file);
         printf("Ground truth built: %zu items, %zu unique keys\n", n_trace_items, gt_ht.n_entries);
-
-        packets_per_window = (n_trace_items + NUM_WINDOWS - 1) / NUM_WINDOWS;
-        printf("Inferred packets per window: %u\n", packets_per_window);
     }
 
     signal(SIGINT, int_exit);
@@ -643,23 +778,12 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    if(trace_file){
-        map = bpf_object__find_map_by_name(obj, "packets_per_window_map");
-        if(map){
-            int ppw_fd = bpf_map__fd(map);
-            uint32_t ppw_key = 0;
-            bpf_map_update_elem(ppw_fd, &ppw_key, &packets_per_window, BPF_ANY);
-            printf("Set packets_per_window in BPF map: %u\n", packets_per_window);
-        }
-    }
-
     xdp_link = bpf_program__attach_xdp(prog, ifindex);
     if (!xdp_link){
         fprintf(stderr, "ERROR: failed to attach XDP program\n");
         ht_free(&gt_ht);
         return 1;
     }
-
     
     {
         struct stat st;
@@ -673,23 +797,26 @@ int main(int argc, char **argv){
     }
 
     map = bpf_object__find_map_by_name(obj, "bucket_map");
-    bpf_map__pin(map, "/sys/fs/bpf/heavy_hitter/bucket_map");
+    bpf_map__pin(map, "/sys/fs/bpf/jigsaw/bucket_map");
 
     map = bpf_object__find_map_by_name(obj, "xdp_stats_map");
-    bpf_map__pin(map, "/sys/fs/bpf/heavy_hitter/xdp_stats_map");
+    bpf_map__pin(map, "/sys/fs/bpf/jigsaw/xdp_stats_map");
 
     map = bpf_object__find_map_by_name(obj, "auxiliary_list_map");
-    bpf_map__pin(map, "/sys/fs/bpf/heavy_hitter/auxiliary_list_map");
-
-    map = bpf_object__find_map_by_name(obj, "packets_per_window_map");
-    bpf_map__pin(map, "/sys/fs/bpf/heavy_hitter/packets_per_window_map");
-
-    map = bpf_object__find_map_by_name(obj, "packet_sequence_map");
-    bpf_map__pin(map, "/sys/fs/bpf/persistent/packet_sequence_map");
+    bpf_map__pin(map, "/sys/fs/bpf/jigsaw/auxiliary_list_map");
 
     map = bpf_object__find_map_by_name(obj, "insert_counter");
-    bpf_map__pin(map, "/sys/fs/bpf/heavy_hitter/insert_counter");
+    bpf_map__pin(map, "/sys/fs/bpf/jigsaw/insert_counter");
 
+    map = bpf_object__find_map_by_name(obj, "latency_hist");
+    if (map) {
+        bpf_map__pin(map, "/sys/fs/bpf/jigsaw/latency_hist");
+    }
+
+    map = bpf_object__find_map_by_name(obj, "pkt_count");
+    if (map) {
+        bpf_map__pin(map, "/sys/fs/bpf/jigsaw/pkt_count");
+    }
 
     
     char stats_pin[512];
@@ -794,41 +921,22 @@ int main(int argc, char **argv){
         print_throughput_stats(total_packets, total_bytes, elapsed);
     }
 
-
-
-
     char insert_map_pin[512];
     snprintf(insert_map_pin, sizeof(insert_map_pin), "%s/insert_counter", pin_dir);
 
     int insert_map_fd = bpf_obj_get(insert_map_pin);
     if (insert_map_fd < 0){
-        fprintf(stderr, "Warning: Could not open stats map: %s\n", strerror(errno));
-   } 
+        fprintf(stderr, "Warning: Could not open insert_counter map: %s\n", strerror(errno));
+   }
 
-
-
-
-
-__u64 prev_total = 0;
- 
-
-  while (!exiting) {
-    sleep(1);
-
-    __u32 key = 0;
-    __u64 vals[64];
-   int nr_cpus = libbpf_num_possible_cpus();
-    printf("insert_map_fd =%d\n", insert_map_fd);
-    if (bpf_map_lookup_elem(insert_map_fd, &key, &vals) == 0) {
-      __u64 total = 0;
-      for (int i = 0; i < nr_cpus; i++)
-        total += vals[i];
-  
-
-      printf("Insert throughput: %llu pkt/s\n", total - prev_total);
-      prev_total = total;
+    /* Try to access latency histogram map */
+    char latency_pin[512];
+    snprintf(latency_pin, sizeof(latency_pin), "%s/latency_hist", pin_dir);
+    int latency_fd = bpf_obj_get(latency_pin);
+    dump_latency_stats(latency_fd);
+    if (latency_fd >= 0) {
+        close(latency_fd);
     }
-  }
 
 cleanup:
     printf("\nDetaching Jigsaw XDP...\n");

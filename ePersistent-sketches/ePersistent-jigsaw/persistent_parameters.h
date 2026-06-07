@@ -1,10 +1,11 @@
 #define KEY_SIZE 13
 
-#define BUCKET_NUM 578
+#define BUCKET_NUM 1735
 #define CELL_NUM_H 4
 #define CELL_NUM_L 4
 
-#define NUM_WINDOWS 1600
+// #define NUM_WINDOWS 1600
+#define PACKETS_PER_WINDOW 5000
 #define PERSISTENCE_THRESHOLD 0.5
 
 #define RESIDUAL_PART_BITS 80
@@ -23,12 +24,11 @@ struct xdp_stats {
     __u64 rx_bytes;
 };
 
-
 struct persistent_cell {
-    __u16 fp;              
+    __u16 fp;
     __u16 window_count;
     __u16 last_seen_window_id;
-    __u64 flow_size;  
+    __u64 flow_size;
     __u16 first_seen_window_id;
 };
 
