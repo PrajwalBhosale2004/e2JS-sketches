@@ -4,10 +4,11 @@
 #include <stdio.h>
 #include <time.h>
 #include <limits.h>
-#include "hash.c"
-#include "util.h"
 
 
+/* Implementation of StableSketch functions converted from StableSketch.cpp */
+
+/* Helper macro for key length in bytes */
 #define KEYLEN_BYTES(s) ((s)->stable_.lgn / 8)
 
 StableSketch* StableSketch_create(int depth, int width, int lgn) {
@@ -19,6 +20,7 @@ StableSketch* StableSketch_create(int depth, int width, int lgn) {
     ss->stable_.lgn = lgn;
     ss->stable_.sum = 0;
 
+    /* allocate array of SBucket* (depth * width entries) */
     int total = depth * width;
     ss->stable_.counts = (SBucket**)malloc(sizeof(SBucket*) * total);
     if (!ss->stable_.counts) {
@@ -29,6 +31,7 @@ StableSketch* StableSketch_create(int depth, int width, int lgn) {
     for (int i = 0; i < total; i++) {
         ss->stable_.counts[i] = (SBucket*)calloc(1, sizeof(SBucket));
         if (!ss->stable_.counts[i]) {
+            /* free previously allocated and return NULL */
             for (int j = 0; j < i; ++j) free(ss->stable_.counts[j]);
             free(ss->stable_.counts);
             free(ss);
@@ -38,6 +41,7 @@ StableSketch* StableSketch_create(int depth, int width, int lgn) {
         ss->stable_.counts[i]->key[0] = '\0';
     }
 
+    /* allocate hash/scale/hardner arrays */
     ss->stable_.hash = (unsigned long*)malloc(sizeof(unsigned long) * depth);
     ss->stable_.scale = (unsigned long*)malloc(sizeof(unsigned long) * depth);
     ss->stable_.hardner = (unsigned long*)malloc(sizeof(unsigned long) * depth);
@@ -51,6 +55,7 @@ StableSketch* StableSketch_create(int depth, int width, int lgn) {
         return NULL;
     }
 
+    /* initialize hash seeds */
     char name[] = "StableSketch";
     uint64_t seed = AwareHash((unsigned char*)name, strlen(name), 13091204281ULL, 228204732751ULL, 6620830889ULL);
     for (int i = 0; i < depth; i++) {
@@ -66,6 +71,7 @@ StableSketch* StableSketch_create(int depth, int width, int lgn) {
         ss->stable_.hardner[i] = (unsigned long)v;
     }
 
+    /* seed rand if not seeded already */
     srand((unsigned)time(NULL));
 
     return ss;
@@ -123,6 +129,7 @@ void StableSketch_Update(StableSketch* ss, unsigned char* key, val_tp val) {
 
     if (flag == 0 && loc >= 0) {
         sbucket = ss->stable_.counts[loc];
+        /* replicate arithmetic from original C++ */
         int denom = (int)(sbucket->stablecount * (sbucket->count) + 1.0);
         if (denom <= 0) denom = 1;
         k = rand() % denom + 1;
@@ -153,7 +160,8 @@ void StableSketch_Query(StableSketch* ss, val_tp thresh, myvector* results) {
             myvector_push(results, reskey, (val_tp)b->count);
         }
     }
-
+    /* keep behavior similar: print result size to stdout for debug (like original) */
+    /* NOTE: myvector doesn't expose size directly here; we'll print results->size */
     fprintf(stdout, "results.size = %zu\n", results->size);
 }
 
@@ -235,7 +243,7 @@ void StableSketch_SetBucket(StableSketch* ss, int row, int column, val_tp sum, l
     if (key) {
         memcpy(ss->stable_.counts[index]->key, key, (size_t)(ss->stable_.lgn / 8));
     }
-    (void)sum;
+    (void)sum; /* sum isn't used in this simple setter except for API parity */
 }
 
 SBucket** StableSketch_GetTable(StableSketch* ss) {
@@ -243,6 +251,13 @@ SBucket** StableSketch_GetTable(StableSketch* ss) {
     return ss->stable_.counts;
 }
 
+/* A simple MergeAll implementation:
+ * For each index:
+ *   - if other bucket is empty and current is non-empty: do nothing
+ *   - if current is empty and other non-empty: copy other bucket into current
+ *   - if both non-empty and keys equal: sum counts and stablecounts
+ *   - otherwise keep current bucket (avoid overwriting)
+ */
 void StableSketch_MergeAll(StableSketch* ss, StableSketch** stable_arr, int size) {
     if (!ss || !stable_arr || size <= 0) return;
 
@@ -250,7 +265,9 @@ void StableSketch_MergeAll(StableSketch* ss, StableSketch** stable_arr, int size
     for (int s = 0; s < size; s++) {
         StableSketch* other = stable_arr[s];
         if (!other) continue;
+        /* ensure same dimensions */
         if (other->stable_.depth != ss->stable_.depth || other->stable_.width != ss->stable_.width) {
+            /* skip incompatible sketches */
             continue;
         }
         for (int i = 0; i < total; i++) {
@@ -264,22 +281,29 @@ void StableSketch_MergeAll(StableSketch* ss, StableSketch** stable_arr, int size
 
             if (src_empty) continue;
             if (dst_empty) {
+                /* copy src into dst */
                 dst->count = src->count;
                 dst->stablecount = src->stablecount;
                 memcpy(dst->key, src->key, (size_t)keylen);
             } else {
+                /* both non-empty */
                 if (memcmp(dst->key, src->key, (size_t)keylen) == 0) {
+                    /* same key: add counts */
                     dst->count += src->count;
                     dst->stablecount += src->stablecount;
                 } else {
+                    /* different keys: keep dst as-is (conservative) */
                 }
             }
         }
+        /* also merge global sum */
         ss->stable_.sum += other->stable_.sum;
     }
 }
 
-
+/* NewWindow: I reset the per-bucket stablecount values (reasonable default).
+ * If you want different semantics (sliding window, rotate arrays, etc.), tell me.
+ */
 void StableSketch_NewWindow(StableSketch* ss) {
     if (!ss) return;
     int total = ss->stable_.depth * ss->stable_.width;
@@ -288,6 +312,7 @@ void StableSketch_NewWindow(StableSketch* ss) {
     }
 }
 
+/* helper init/free for stable_type (optional) */
 void stable_type_init(stable_type* s) {
     if (!s) return;
     s->sum = 0;
